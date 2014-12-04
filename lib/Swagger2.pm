@@ -64,6 +64,13 @@ Mojo::Util::monkey_patch(__PACKAGE__,
 L<Mojo::URL> object that holds the location to the API endpoint.
 Note: This might also just be a dummy URL to L<http://example.com/>.
 
+=head2 client
+
+  $obj = $self->client;
+
+Returns a L<Swagger2::Client> which can be used to send requests to the
+L</base_url>.
+
 =head2 tree
 
   $pointer = $self->tree;
@@ -98,6 +105,11 @@ has base_url => sub {
   $url->scheme($schemes->[0]               || 'http');
 
   return $url;
+};
+
+has client => sub {
+  require Swagger2::Client;
+  Swagger2::Client->new(swagger => $self);
 };
 
 has tree => sub {

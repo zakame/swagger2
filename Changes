@@ -4,5 +4,6 @@ Changelog for Swagger2
        * Add load()
        * Add pod() and Swagger2::POD
        * Add to_string($format)
+       * Add client() and Swagger2::Client
        * Started project
 
