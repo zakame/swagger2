@@ -19,7 +19,8 @@ package Swagger2::SchemaValidator;
 # TODO: {id}, {dependencies}
 
 use Mojo::Base -strict;
-use Mojo::JSON;
+use Mojo::JSON   ();
+use Data::Dumper ();
 use constant FALSE => Mojo::JSON->false;
 use constant TRUE  => Mojo::JSON->true;
 no autovivification;
@@ -205,7 +206,7 @@ sub checkProp {
         }
         if ($schema->{'uniqueItems'}) {
           my %hash;
-          $hash{to_json([$_], {canonical => 1, convert_blessed => 1})}++ for @$value;
+          $hash{_to_str($_)}++ for @$value;
           $addError->("Array must not contain duplicates.") unless scalar(keys %hash) == scalar(@$value);
         }
       }
@@ -288,8 +289,8 @@ sub checkProp {
       }
       if ($schema->{'enum'}) {
         my %enum;
-        $enum{to_json([$_], {canonical => 1, convert_blessed => 1})}++ for @{$schema->{'enum'}};
-        my $this_value = to_json([$value], {canonical => 1, convert_blessed => 1});
+        $enum{_to_str($_)}++ for @{$schema->{'enum'}};
+        my $this_value = _to_str($value);
         $addError->("does not have a value in the enumeration {" . (join ",", @{$schema->{'enum'}}) . '}')
           unless exists $enum{$this_value};
       }
@@ -448,6 +449,10 @@ sub jsGuessType {
   return 'number' if $value =~ /^\-?[0-9]*(\.[0-9]*)?$/;
 
   return 'string';
+}
+
+sub _to_str {
+  Data::Dumper->new([@_])->Sortkeys(1)->Terse(1)->Useqq(1)->Dump;
 }
 
 1;
