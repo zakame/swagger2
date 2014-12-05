@@ -47,10 +47,12 @@ and L<YAML::Tiny>.
 =cut
 
 use Mojo::Base -base;
-use Mojo::JSON;
+use Mojo::JSON qw( encode_json decode_json );
 use Mojo::JSON::Pointer;
 use Mojo::URL;
 use Mojo::Util ();
+use File::Spec;
+use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
 
 our $VERSION = '0.02';
 
@@ -155,31 +157,9 @@ or "Content-Type" header reported by a web server.
 
 sub load {
   my $self = shift;
-  my ($data, $scheme, $tree, $type);
-
-  $self->{url} = Mojo::URL->new(shift) if @_;
-  $scheme = $self->{url}->scheme || 'file';
-
-  if ($scheme eq 'file') {
-    $data = Mojo::Util::slurp($self->{url}->path);
-    $type = $self->{url}->path =~ /\.(yaml|json)$/i ? lc $1 : 'json';
-  }
-  else {
-    my $tx = $self->ua->get($self->{url});
-    $type ||= $1 if $self->{url}->path =~ /\.(\w+)$/;
-    $type ||= ($tx->res->headers->content_type // '') =~ /json/ ? 'json' : 'yaml';
-    $data = $tx->res->body;
-  }
-
-  if ($type eq 'yaml' or $data =~ /^---/) {
-    $tree = LoadYAML($data);
-  }
-  else {
-    $tree = Mojo::JSON::decode_json($data);
-  }
-
   delete $self->{base_url};
-  $self->{tree} = Mojo::JSON::Pointer->new($tree);
+  $self->{url} = Mojo::URL->new(shift) if @_;
+  $self->{tree} = Mojo::JSON::Pointer->new($self->_load($self->url));
   $self;
 }
 
@@ -255,6 +235,46 @@ sub _get_definition {
   }
 
   return $definition;
+}
+
+sub _load {
+  my ($self, $url) = @_;
+  my $key = Mojo::Util::md5_sum($url);
+  my ($doc, $scheme, $type);
+
+  if (CACHE_DIR) {
+    my $file = File::Spec->catfile(CACHE_DIR, $key);
+    return decode_json(Mojo::Util::slurp($file)) if -e $file;
+  }
+
+  if ($self->{loaded}{$key}) {
+    return $self->{loaded}{$key};
+  }
+
+  $scheme = $url->scheme || 'file';
+  if ($scheme eq 'file') {
+    $doc = Mojo::Util::slurp($self->{url}->path);
+    $type = lc $1 if $url->path =~ /\.(yaml|json)$/i;
+  }
+  else {
+    my $tx = $self->ua->get($url);
+    $doc  = $tx->res->body;
+    $type = lc $1 if $url->path =~ /\.(\w+)$/;
+    $type = lc $1 if +($tx->res->headers->content_type // '') =~ /(json|yaml)/i;
+  }
+
+  $type ||= $doc =~ /^---/ ? 'yaml' : 'json';
+
+  eval { $self->{loaded}{$key} = $type eq 'yaml' ? LoadYAML($doc) : decode_json($doc); } or do {
+    die "Could not load document from $url: $@ ($doc)";
+  };
+
+  if (CACHE_DIR) {
+    my $file = File::Spec->catfile(CACHE_DIR, $key);
+    Mojo::Util::spurt(encode_json($self->{loaded}{$key}), $file);
+  }
+
+  return $self->{loaded}{$key};
 }
 
 sub _resolve_refs {
