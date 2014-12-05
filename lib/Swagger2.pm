@@ -38,7 +38,7 @@ and L<YAML::Tiny>.
   use Swagger2;
   my $swagger = Swagger2->new("file:///path/to/api-spec.yaml");
 
-  # Access the raw specificaiton values
+  # Access the raw specification values
   print $swagger->tree->get("/swagger");
 
   # Returns the specification as a POD document
@@ -55,6 +55,12 @@ use File::Spec;
 use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
 
 our $VERSION = '0.02';
+
+# Should be considered internal
+our $SPEC_FILE = do {
+  use File::Basename 'dirname';
+  File::Spec->catfile(dirname(__FILE__), 'Swagger2', 'schema.json');
+};
 
 my @YAML_MODULES = qw( YAML::Tiny YAML YAML::Syck YAML::XS );
 my $YAML_MODULE
@@ -74,12 +80,20 @@ Mojo::Util::monkey_patch(__PACKAGE__,
 L<Mojo::URL> object that holds the location to the API endpoint.
 Note: This might also just be a dummy URL to L<http://example.com/>.
 
+=head2 specification
+
+  $pointer = $self->specification;
+  $self = $self->specification(Mojo::JSON::Pointer->new({}));
+
+Holds a L<Mojo::JSON::Pointer> object containing the
+L<Swagger 2.0 schema|https://github.com/swagger-api/swagger-spec>.
+
 =head2 tree
 
   $pointer = $self->tree;
   $self = $self->tree(Mojo::JSON::Pointer->new({}));
 
-Holds a L<Mojo::JSON::Pointer> object containing the swagger specification.
+Holds a L<Mojo::JSON::Pointer> object containing your API specification.
 
 =head2 ua
 
@@ -110,6 +124,10 @@ has base_url => sub {
   $url->scheme($schemes->[0]               || 'http');
 
   return $url;
+};
+
+has specification => sub {
+  Mojo::JSON::Pointer->new(decode_json(Mojo::Util::slurp($SPEC_FILE)));
 };
 
 has tree => sub {
