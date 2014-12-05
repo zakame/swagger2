@@ -50,7 +50,7 @@ sub validate {
   ## 						property: which indicates which property had the error
   ## 						message: which indicates what the error was
   ##
-  return $self->_validate($instance, $schema, FALSE);
+  return $self->_validate($instance, $schema, 1);
 }
 
 sub checkPropertyChange {
@@ -71,7 +71,7 @@ sub _validate {
 
   $self->{errors} = [];
 
-  local $SIG{__WARN__} = sub { Carp::confess($_[0]) }
+  local $SIG{__WARN__} = sub { _die_on_warnings($_[0]); }
     if DIE_ON_WARNINGS;
 
   if ($schema) {
@@ -81,7 +81,7 @@ sub _validate {
     $self->checkProp($instance, $instance->{'$schema'}, '', '', $_changing);
   }
 
-  return {valid => (@{$self->{errors}} ? FALSE : TRUE), errors => $self->{errors},};
+  return {valid => (@{$self->{errors}} ? FALSE : TRUE), errors => $self->{errors}};
 }
 
 sub checkType {
@@ -457,6 +457,18 @@ sub jsGuessType {
 
 sub _to_str {
   Data::Dumper->new([@_])->Sortkeys(1)->Terse(1)->Useqq(1)->Dump;
+}
+
+sub _die_on_warnings {
+
+  package DB;
+  my $caller = (caller 2)[3];
+  my @args   = @DB::args;
+  shift @args;
+  @args
+    = map { ref $_ ? Data::Dumper->new([$_])->Indent(0)->Maxdepth(4)->Sortkeys(1)->Terse(1)->Useqq(1)->Dump : qq("$_") }
+    @args;
+  die sprintf '%s($self, %s): %s', $caller, join(', ', @args), $_[0];
 }
 
 1;
