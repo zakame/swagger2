@@ -142,6 +142,11 @@ has ua => sub {
   Mojo::UserAgent->new;
 };
 
+has _validator => sub {
+  require Swagger2::SchemaValidator;
+  Swagger2::SchemaValidator->new;
+};
+
 sub url { shift->{url} }
 
 =head1 METHODS
@@ -234,16 +239,52 @@ sub to_string {
     return DumpYAML($self->tree->data);
   }
   else {
-    return Mojo::JSON::encode_json($self->tree->data);
+    return encode_json $self->tree->data;
   }
 }
 
+=head2 validate
+
+  $errors = $self->validate;
+
+Will validate this object against the L</specification>,
+and return an array ref with all the errors found.
+
+=cut
+
+sub validate {
+  my $self   = shift;
+  my $schema = $self->_resolve_refs($self->specification);
+  my $v      = $self->_validator->validate($self->tree->data, $schema->data);
+
+  return $v->{valid} ? [] : $v->{errors};
+}
+
 sub _get_definition {
-  my ($self, $path) = @_;
-  my $definition = $self->tree->get($path);
+  my ($self, $ref, $spec) = @_;
+  my $definition;
+
+  if ($ref =~ m!^(\w+)$!) {
+    $definition = $spec->get("/definitions/$1");
+  }
+  elsif ($ref =~ m!^\#?(/.+)!) {
+    $definition = $spec->get($1);
+  }
+  elsif ($ref =~ m!^https?://!) {
+    my $url = Mojo::URL->new($ref);
+    $definition = $self->_load($url->clone->fragment(undef));
+
+    if ($url->fragment) {
+      return $self->_get_definition($url->fragment, Mojo::JSON::Pointer->new($definition));
+    }
+  }
+  else {
+    die "Cannot lookup ref: @{[encode_json $ref]}. "
+      . "Submit a bug report at https://github.com/jhthorsen/swagger2/issues if you think this need to be fixed.";
+  }
 
   if (!$definition) {
-    die "Undefined definition at path: $path";
+    die "Could not find definition for reference '$ref'";
   }
 
   if (ref $definition->{required} eq 'ARRAY') {
@@ -296,21 +337,23 @@ sub _load {
 }
 
 sub _resolve_refs {
-  my ($self, $in, $out) = @_;
+  my ($self, $in, $out, $spec) = @_;
+
+  $out  ||= Mojo::JSON::Pointer->new;
+  $spec ||= $in;
 
   if (!ref $in eq 'HASH') {
     return $in;
   }
 
-  if (my $ref = $in->{'$ref'}) {
-    return $self->_get_definition("/$1")             if $ref =~ m!^\#/(.*)!;
-    return $self->_get_definition("/definitions/$1") if $ref =~ m!^(\w+)$!;
-    die "Not yet supported ref: '$ref'";
+  if ($in->{'$ref'} and !ref $in->{'$ref'}) {
+    my $ref = delete $in->{'$ref'};
+    return $self->_get_definition($ref, $spec);
   }
 
   for my $k (keys %$in) {
     my $v = $in->{$k};
-    $out->{$k} = ref $v eq 'HASH' ? $self->_resolve_refs($v, {}) : $v;
+    $out->{$k} = ref $v eq 'HASH' ? $self->_resolve_refs($v, {}, $spec) : $v;
   }
 
   return $out;
