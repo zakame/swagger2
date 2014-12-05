@@ -125,6 +125,8 @@ sub checkProp {
   my $l;
   $path .= $path ? ".${i}" : "\$${i}";
 
+  #print _to_str([$path, $i, $value, $schema]);
+
   my $addError = sub {
     my ($message) = @_;
     my $e = {property => $path, message => $message};
