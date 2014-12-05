@@ -26,6 +26,7 @@ use constant TRUE  => Mojo::JSON->true;
 no autovivification;
 use POSIX qw[modf];
 use Scalar::Util qw[blessed];
+use constant DIE_ON_WARNINGS => $ENV{HARNESS_IS_VERBOSE} || 0;
 
 sub new {
   my ($class, %args) = @_;
@@ -69,6 +70,9 @@ sub _validate {
   my ($self, $instance, $schema, $_changing) = @_;
 
   $self->{errors} = [];
+
+  local $SIG{__WARN__} = sub { Carp::confess($_[0]) }
+    if DIE_ON_WARNINGS;
 
   if ($schema) {
     $self->checkProp($instance, $schema, '', ($_changing // ''), $_changing);
