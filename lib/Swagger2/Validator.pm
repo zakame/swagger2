@@ -58,7 +58,7 @@ sub validate {
 
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
-  my $validator = sprintf '_validate_type_%s', $schema->{type} || 'object';
+  my $validator = sprintf '_validate_type_%s', $schema->{type} || 'any';
 
   return $self->$validator($data, $path, $schema);
 }
@@ -86,7 +86,7 @@ sub _validate_pattern_properties {
 
   for my $pattern (keys %$properties) {
     my $v = $properties->{$pattern};
-    my $validator = sprintf '_validate_type_%s', $v->{type} || 'object';
+    my $validator = sprintf '_validate_type_%s', $v->{type} || 'any';
 
     for my $tk (keys %$data) {
       next unless $tk =~ /$pattern/;
@@ -104,7 +104,7 @@ sub _validate_properties {
 
   for my $name (keys %$properties) {
     my $v = $properties->{$name};
-    my $validator = sprintf '_validate_type_%s', $v->{type} || 'object';
+    my $validator = sprintf '_validate_type_%s', $v->{type} || 'any';
 
     if (exists $data->{$name}) {
       push @errors, $self->$validator(delete $data->{$name}, "$path/$name", $v);
@@ -128,6 +128,10 @@ sub _validate_required {
   }
 
   return @errors;
+}
+
+sub _validate_type_any {
+  return;
 }
 
 sub _validate_type_array {
@@ -158,7 +162,7 @@ sub _validate_type_array {
 
     if (@v == @$data) {
       for my $i (0 .. @v - 1) {
-        my $validator = sprintf '_validate_type_%s', $v[$i]{type} || 'object';
+        my $validator = sprintf '_validate_type_%s', $v[$i]{type} || 'any';
         push @errors, $self->$validator($data->[$i], "$path/$i", $v[$i]);
       }
     }
@@ -167,7 +171,7 @@ sub _validate_type_array {
     }
   }
   elsif (ref $schema->{items} eq 'HASH') {
-    my $validator = sprintf '_validate_type_%s', $schema->{items}{type} || 'object';
+    my $validator = sprintf '_validate_type_%s', $schema->{items}{type} || 'any';
     for my $i (0 .. @$data - 1) {
       push @errors, $self->$validator($data->[$i], "$path/$i", $schema->{items});
     }
