@@ -147,8 +147,8 @@ has ua => sub {
 };
 
 has _validator => sub {
-  require Swagger2::SchemaValidator;
-  Swagger2::SchemaValidator->new;
+  require Swagger2::Validator;
+  Swagger2::Validator->new;
 };
 
 sub url { shift->{url} }
@@ -251,19 +251,19 @@ sub to_string {
 
 =head2 validate
 
-  $errors = $self->validate;
+  @errors = $self->validate;
 
 Will validate this object against the L</specification>,
-and return an array ref with all the errors found.
+and return a list with all the errors found. See also
+L<Swagger2::Validator/validate>.
 
 =cut
 
 sub validate {
   my $self   = shift;
   my $schema = $self->_resolve($self->specification);
-  my $v      = $self->_validator->validate($self->_resolve($self->tree)->data, $schema->data);
 
-  return $v->{valid} ? [] : $v->{errors};
+  return $self->_validator->validate($self->_resolve($self->tree)->data, $schema->data);
 }
 
 sub _load {
@@ -346,10 +346,6 @@ sub _resolve {
       $node->{$k} = $doc->get($url->fragment);
     }
   }
-
-#my ($self, $value, $schema, $path, $i, $_changing) = @_;
-#Swagger2::SchemaValidator::checkProp($self, {"description" => "How many items to return at one time (max 100)","format" => "int32","in" => "query","name" => "limit","required" => bless( do{\(my $o = 0)}, 'Mojo::JSON::_Bool' ),"type" => "integer"}, {"oneOf" => [{"oneOf" => ['HASH(0x3887f00)','HASH(0x38ae3e0)']},{"additionalProperties" => bless( do{\(my $o = 0)}, 'Mojo::JSON::_Bool' ),"properties" => {"\$ref" => 'HASH(0x38be3e8)'},"type" => "object"}]}, "$1.paths./pets.get.parameters", "0", "1"): Use of uninitialized value in string eq at /home/jhthorsen/git/swagger2/lib/Swagger2/SchemaValidator.pm line 219.
-
 
   return $pointer;
 }

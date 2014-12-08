@@ -67,8 +67,8 @@ agent.
 
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::Util 'decamelize';
-use Swagger2::SchemaValidator;
 use Swagger2;
+use Swagger2::Validator;
 use constant DEBUG => $ENV{SWAGGER2_DEBUG} || 0;
 
 =head1 ATTRIBUTES
@@ -85,7 +85,7 @@ Holds the URL to the swagger specification file.
 
 has controller => '';
 has url        => '';
-has _validator => sub { Swagger2::SchemaValidator->new; };
+has _validator => sub { Swagger2::Validator->new; };
 
 =head1 HELPERS
 
@@ -111,7 +111,6 @@ a data structure describing the errors. The default is to render a JSON
 document, like this:
 
   {
-    "valid": false,
     "errors": [
       {
         "message": "string value found, but a integer is required",
@@ -128,7 +127,6 @@ C<%err> then contains a data structure describing the errors. The default is
 to render a JSON document, like this:
 
   {
-    "valid": false,
     "errors": [
       {
         "message": "is missing and it is required",
@@ -145,7 +143,6 @@ the required method. C<%err> then contains a data structure describing the
 errors. The default is to render a JSON document, like this:
 
   {
-    "valid": false,
     "errors": [
       {
         "message": "No handler defined.",
@@ -223,9 +220,9 @@ sub _generate_request_handler {
     $c->delay(
       sub {
         my ($delay) = @_;
-        my ($v, $input) = $self->_validate_input($c, $config);
+        my ($err, $input) = $self->_validate_input($c, $config);
 
-        return $c->render_swagger($v, {}, 400) unless $v->{valid};
+        return $c->render_swagger({errors => $err}, {}, 400) if @$err;
         return $c->$method($input, $delay->begin);
       },
       sub {
@@ -233,9 +230,9 @@ sub _generate_request_handler {
         my $data   = shift;
         my $status = shift || 200;
         my $format = $config->{responses}{$status} || $config->{responses}{default};
-        my $v      = $self->_validator->validate($data, $format->{schema});
+        my @err    = $self->_validator->validate($data, $format->{schema});
 
-        return $c->render_swagger($v, $data, 500) unless $v->{valid};
+        return $c->render_swagger({errors => \@err}, $data, 500) if @err;
         return $c->render_swagger({}, $data, $status);
       },
     );
@@ -243,7 +240,7 @@ sub _generate_request_handler {
 }
 
 sub _not_implemented {
-  {valid => Mojo::JSON->false, errors => [{message => 'No handler defined.', property => undef}]};
+  {errors => [{message => 'No handler defined.', property => undef}]};
 }
 
 sub _validate_input {
@@ -251,11 +248,10 @@ sub _validate_input {
   my $headers = $c->req->headers;
   my $query   = $c->req->url->query;
   my $body    = $c->req->json || $c->req->body_params->to_hash || {};
-  my %v       = (errors => []);
-  my %input;
+  my (@err, %input);
 
   for my $p (@{$config->{parameters} || []}) {
-    my @err;
+    my @e;
     my $in   = $p->{in};
     my $name = $p->{name};
     my $value
@@ -265,21 +261,17 @@ sub _validate_input {
       :                   $body->{$name};
 
     if ($p->{schema}) {
-      my $tmp = $self->_validator->validate($value, $p->{schema});
-      push @err, @{$tmp->{errors} || []};
+      push @e, $self->_validator->validate($value, $p->{schema});
     }
     else {
-      my $tmp = $self->_validator->validate($value, $p);
-      push @err, @{$tmp->{errors} || []};
+      push @e, $self->_validator->validate($value, $p);
     }
 
-    push @{$v{errors}}, map { $_->{property} = "\$0.$name"; $_ } @err;
-    $input{$name} = $value unless @err;
+    $input{$name} = $value unless @e;
+    push @err, @e;
   }
 
-  $v{valid} = @{$v{errors}} ? Mojo::JSON->false : Mojo::JSON->true;
-
-  return \%v, \%input;
+  return \@err, \%input;
 }
 
 =head1 COPYRIGHT AND LICENSE

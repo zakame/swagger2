@@ -2,6 +2,7 @@ Changelog for Swagger2
 
 0.03
        * Add validate()
+       * Replaced Swagger2::SchemaValidator with Swagger2::Validator
 
 0.02     Fri Dec  5 10:01:34 2014
        * Add Swagger2::SchemaValidator
