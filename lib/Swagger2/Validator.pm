@@ -20,11 +20,33 @@ L<Swagger2::Validator> is a class for valditing JSON schemas.
 use Mojo::Base -base;
 use B;
 
+sub E {
+  bless {path => $_[0], message => $_[1]}, 'Swagger2::Validator::Error';
+}
+
+sub _cmp {
+  return undef    if !defined $_[0];
+  return "$_[3]=" if $_[2] and $_[0] >= $_[1];
+  return $_[3]    if $_[0] > $_[1];
+  return "";
+}
+
 =head1 METHODS
 
 =head2 validate
 
   @errors = $self->validate($data, $schema);
+
+Validates C<$data> against a given JSON C<$schema>. C<@errors> will
+contain objects with containing the validation errors. It will be
+empty on success.
+
+Example error element:
+
+  bless {
+    message => "Some description",
+    path => "/json/path/to/node",
+  }, "Swagger2::Validator::Error"
 
 =cut
 
@@ -48,7 +70,7 @@ sub _validate_additional_properties {
 
   if (!$properties and keys %$data) {
     local $" = ', ';
-    push @errors, {path => $path, message => "These additional properties are not allowed: @{[keys %$data]}"};
+    push @errors, E $path, "These additional properties are not allowed: @{[keys %$data]}";
   }
   if (ref $properties eq 'HASH') {
     push @errors, $self->_validate_properties($data, $path, $schema);
@@ -88,7 +110,7 @@ sub _validate_properties {
       push @errors, $self->$validator(delete $data->{$name}, "$path/$name", $v);
     }
     elsif ($v->{required}) {
-      push @errors, {path => "$path/$name", message => "'$name' is required in object."};
+      push @errors, E "$path/$name", "Missing property: ($name)";
     }
   }
 
@@ -102,7 +124,7 @@ sub _validate_required {
 
   for my $name (@$properties) {
     next if defined $data->{$name};
-    push @errors, {path => "$path/$name", message => "'$name' is required in object."};
+    push @errors, E "$path/$name", "Missing property: ($name)";
   }
 
   return @errors;
@@ -113,23 +135,20 @@ sub _validate_type_array {
   my @errors;
 
   if (ref $data ne 'ARRAY') {
-    return {path => $path, message => "$data is not an array"};
+    return E $path, "Not an array: ($data)";
   }
 
   $data = [@$data];
 
   if (defined $schema->{minItems} and $schema->{minItems} > @$data) {
-    push @errors, {path => $path, message => sprintf 'Not enough items. %s/%s', int @$data, $schema->{minItems}};
+    push @errors, E $path, sprintf 'Not enough items. %s/%s', int @$data, $schema->{minItems};
   }
-
   if (defined $schema->{maxItems} and $schema->{maxItems} < @$data) {
-    push @errors, {path => $path, message => sprintf 'Too many items. %s/%s', int @$data, $schema->{maxItems}};
+    push @errors, E $path, sprintf 'Too many items. %s/%s', int @$data, $schema->{maxItems};
   }
-
   if ($schema->{uniqueItems}) {
-    push @errors, {path => $path, message => 'TODO: "uniqueItems"'};
+    push @errors, E $path, 'TODO: "uniqueItems"';
   }
-
   if (ref $schema->{items} eq 'ARRAY') {
     my @v = @{$schema->{items}};
 
@@ -139,12 +158,12 @@ sub _validate_type_array {
 
     if (@v == @$data) {
       for my $i (0 .. @v - 1) {
-        my $validator = sprintf '_validate_type_%s', $schema->{items}{type} || 'object';
+        my $validator = sprintf '_validate_type_%s', $v[$i]{type} || 'object';
         push @errors, $self->$validator($data->[$i], "$path/$i", $v[$i]);
       }
     }
     else {
-      push @errors, {path => $path, message => sprintf "Invalid number of items. %s/%s", int(@$data), int(@v)};
+      push @errors, E $path, sprintf "Invalid number of items. %s/%s", int(@$data), int(@v);
     }
   }
   elsif (ref $schema->{items} eq 'HASH') {
@@ -155,44 +174,33 @@ sub _validate_type_array {
   }
 }
 
+sub _validate_type_integer {
+  my ($self, $value, $path, $schema) = @_;
+  my @errors = $self->_validate_type_numeric($value, $path, $schema);
+
+  return @errors if @errors;
+  return if $value =~ /^\d+$/;
+  return E $path, "Not an integer: ($value)";
+}
+
 sub _validate_type_numeric {
   my ($self, $value, $path, $schema) = @_;
   my @errors;
 
   # Number logic (from Mojo::JSON)
   unless (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return {path => $path, message => "'$value' is not a number."};
+    return E $path, "Not a number: ($value)";
   }
 
-  if (defined $schema->{minimum}) {
-    if ($schema->{exclusiveMinimum}) {
-      unless ($value >= $schema->{minimum}) {
-        push @errors, {path => $path, message => "$value < $schema->{minimum}"};
-      }
-    }
-    else {
-      if ($value < $schema->{minimum}) {
-        push @errors, {path => $path, message => "$value <= $schema->{minimum}"};
-      }
-    }
+  if (my $e = _cmp($schema->{minimum}, $value, $schema->{exclusiveMinimum}, '<')) {
+    push @errors, E $path, "$value $e minimum($schema->{minimum})";
   }
-
-  if (defined $schema->{maximum}) {
-    if ($schema->{exclusiveMaximum}) {
-      if ($value > $schema->{maximum}) {
-        push @errors, {path => $path, message => "$value > $schema->{maximum}"};
-      }
-    }
-    else {
-      unless ($value <= $schema->{maximum}) {
-        push @errors, {path => $path, message => "$value >= $schema->{maximum}"};
-      }
-    }
+  if (my $e = _cmp($value, $schema->{maximum}, $schema->{exclusiveMaximum}, '>')) {
+    push @errors, E $path, "$value $e maximum($schema->{maximum})";
   }
-
   if (my $d = $schema->{divisibleBy}) {
     unless (int($value / $d) == $value / $d) {
-      push @errors, {path => $path, message => "'$value is not divisible by $d."};
+      push @errors, E $path, "$value is not divisible by $d.";
     }
   }
 
@@ -206,14 +214,14 @@ sub _validate_type_object {
   # make sure _validate_xxx() does not mess up original $data
   $data = {%$data};
 
+  if ($schema->{required}) {
+    push @errors, $self->_validate_required($data, $path, $schema);
+  }
   if (defined $schema->{maxProperties} and $schema->{maxProperties} < keys %$data) {
-    push @errors,
-      {path => $path, message => sprintf 'Too many properties. %s/%s', int(keys %$data), $schema->{maxProperties}};
-    push @errors, {path => $path, message => 'Too many properties'};
+    push @errors, E $path, sprintf 'Too many properties. %s/%s', int(keys %$data), $schema->{maxProperties};
   }
   if (defined $schema->{minProperties} and $schema->{minProperties} > keys %$data) {
-    push @errors,
-      {path => $path, message => sprintf 'Not enough properties. %s/%s', int(keys %$data), $schema->{minProperties}};
+    push @errors, E $path, sprintf 'Not enough properties. %s/%s', int(keys %$data), $schema->{minProperties};
   }
   if ($schema->{properties}) {
     push @errors, $self->_validate_properties($data, $path, $schema);
@@ -223,9 +231,6 @@ sub _validate_type_object {
   }
   if (exists $schema->{additionalProperties}) {
     push @errors, $self->_validate_additional_properties($data, $path, $schema);
-  }
-  if ($schema->{required}) {
-    push @errors, $self->_validate_required($data, $path, $schema);
   }
 
   return @errors;
@@ -237,32 +242,35 @@ sub _validate_type_string {
 
   if (!defined $value or ref $value) {
     $value = defined $value ? qq('$value') : q(null);
-    return {path => $path, message => "$value is not a string."};
+    return E $path, "Not a string: ($value)";
   }
-
+  if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
+    return E $path, "Not a string: ($value)";
+  }
   if (defined $schema->{maxLength}) {
-    if ($schema->{maxLength} < length $value) {
-      push @errors,
-        {path => $path, message => sprintf "String is too long. %s/%s", length($value), $schema->{maxLength}};
+    if (length($value) > $schema->{maxLength}) {
+      push @errors, E $path, sprintf "String is too long: %s/%s", length($value), $schema->{maxLength};
     }
   }
-
   if (defined $schema->{minLength}) {
-    if ($schema->{minLength} < length $value) {
-      push @errors,
-        {path => $path, message => sprintf "String is too long. %s/%s", length($value), $schema->{minLength}};
+    if (length($value) < $schema->{minLength}) {
+      push @errors, E $path, sprintf "String is too short: %s/%s", length($value), $schema->{minLength};
     }
   }
   if (defined $schema->{pattern}) {
     my $p = $schema->{pattern};
     unless ($value =~ /$p/) {
-      push @errors, {path => $path, message => "String does not match '$p'"};
+      push @errors, E $path, "String does not match '$p'";
     }
   }
 
-
   return @errors;
 }
+
+package    # hide from
+  Swagger2::Validator::Error;
+
+use overload (q("") => sub { shift->{message} }, bool => sub {1}, fallback => 1,);
 
 =head1 COPYRIGHT AND LICENSE
 

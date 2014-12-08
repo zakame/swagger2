@@ -1,33 +1,37 @@
 use Mojo::Base -strict;
 use Test::More;
-use Swagger2::SchemaValidator;
+use Swagger2::Validator;
 
-my $validator = Swagger2::SchemaValidator->new;
+my $validator = Swagger2::Validator->new;
 my $schema = {type => 'object', properties => {mynumber => {type => 'integer', minimum => 1, maximum => 4}}};
 
 my $data = {mynumber => 1};
-my $result = $validator->validate($data, $schema);
-ok $result->{valid}, 'min' or map { diag "reason: $_" } $result->{errors};
+my @errors = $validator->validate($data, $schema);
+is "@errors", "", "min";
 
 $data = {mynumber => 4};
-$result = $validator->validate($data, $schema);
-ok $result->{valid}, 'max' or map { diag "reason: $_" } $result->{errors};
+@errors = $validator->validate($data, $schema);
+is "@errors", "", "max";
 
 $data = {mynumber => 2};
-$result = $validator->validate($data, $schema);
-ok $result->{valid}, 'in the middle' or map { diag "reason: $_" } $result->{errors};
+@errors = $validator->validate($data, $schema);
+is "@errors", "", "in the middle";
 
 $data = {mynumber => 0};
-$result = $validator->validate($data, $schema);
-ok !$result->{valid}, 'too small' or map { diag "reason: $_" } $result->{errors};
+@errors = $validator->validate($data, $schema);
+is "@errors", "0 < minimum(1)", 'too small';
 
 $data = {mynumber => -1};
-$result = $validator->validate($data, $schema);
-ok !$result->{valid}, 'too small and neg' or map { diag "reason: $_" } $result->{errors};
+@errors = $validator->validate($data, $schema);
+is "@errors", "-1 < minimum(1)", 'too small and neg';
 
 $data = {mynumber => 5};
-$result = $validator->validate($data, $schema);
-ok !$result->{valid}, 'too big' or map { diag "reason: $_" } $result->{errors};
+@errors = $validator->validate($data, $schema);
+is "@errors", "5 > maximum(4)", "too big";
+
+$data = {mynumber => "2"};
+@errors = $validator->validate($data, $schema);
+is "@errors", "Not a number: (2)", "a string";
 
 done_testing;
 
