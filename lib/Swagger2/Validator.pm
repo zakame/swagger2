@@ -36,6 +36,17 @@ sub _cmp {
   return "";
 }
 
+=head1 ATTRIBUTES
+
+=head2 formats
+
+TODO
+
+=cut
+
+has formats => sub {
+};
+
 =head1 METHODS
 
 =head2 validate
@@ -65,6 +76,10 @@ sub _validate {
   my ($self, $data, $path, $schema) = @_;
   my $type = $schema->{type} || 'any';
   my (@e, @errors);
+
+  if ($schema->{disallow}) {
+    die 'TODO: No support for disallow.';
+  }
 
   for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
     if (ref $t eq 'HASH') {
