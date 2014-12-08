@@ -261,7 +261,7 @@ and return an array ref with all the errors found.
 sub validate {
   my $self   = shift;
   my $schema = $self->_resolve($self->specification);
-  my $v      = $self->_validator->validate($self->tree->data, $schema->data);
+  my $v      = $self->_validator->validate($self->_resolve($self->tree)->data, $schema->data);
 
   return $v->{valid} ? [] : $v->{errors};
 }
@@ -346,6 +346,10 @@ sub _resolve {
       $node->{$k} = $doc->get($url->fragment);
     }
   }
+
+#my ($self, $value, $schema, $path, $i, $_changing) = @_;
+#Swagger2::SchemaValidator::checkProp($self, {"description" => "How many items to return at one time (max 100)","format" => "int32","in" => "query","name" => "limit","required" => bless( do{\(my $o = 0)}, 'Mojo::JSON::_Bool' ),"type" => "integer"}, {"oneOf" => [{"oneOf" => ['HASH(0x3887f00)','HASH(0x38ae3e0)']},{"additionalProperties" => bless( do{\(my $o = 0)}, 'Mojo::JSON::_Bool' ),"properties" => {"\$ref" => 'HASH(0x38be3e8)'},"type" => "object"}]}, "$1.paths./pets.get.parameters", "0", "1"): Use of uninitialized value in string eq at /home/jhthorsen/git/swagger2/lib/Swagger2/SchemaValidator.pm line 219.
+
 
   return $pointer;
 }

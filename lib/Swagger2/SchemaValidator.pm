@@ -123,9 +123,7 @@ sub checkType {
 sub checkProp {
   my ($self, $value, $schema, $path, $i, $_changing) = @_;
   my $l;
-  $path .= $path ? ".${i}" : "\$${i}";
-
-  #print _to_str([$path, $i, $value, $schema]);
+  $path .= $path ? ".${i}" : "\$${i}" if defined $i;
 
   my $addError = sub {
     my ($message) = @_;
@@ -216,10 +214,24 @@ sub checkProp {
           $addError->("Array must not contain duplicates.") unless scalar(keys %hash) == scalar(@$value);
         }
       }
+      elsif ($schema->{anyOf}) {
+        my @errors;
+        local $self->{errors} = \@errors;
+        for my $m (@{$schema->{anyOf}}) {
+          $self->checkProp($value, $m, $path, $i, $_changing);
+        }
+      }
+      elsif ($schema->{oneOf}) {
+        my @errors;
+        local $self->{errors} = \@errors;
+        for my $m (@{$schema->{oneOf}}) {
+          $self->checkProp($value, $m, $path, $i, $_changing);
+        }
+      }
       elsif (defined $schema->{'properties'}
         or defined $schema->{'additionalProperties'}
         or defined $schema->{'patternProperties'}
-        or $schema->{'type'} eq 'object')
+        or ($schema->{'type'} // '') eq 'object')
       {
         push @{$self->{errors}},
           $self->checkObj(
@@ -330,6 +342,7 @@ sub checkObj {
   if (ref $objTypeDef eq 'HASH') {
     if (ref $instance ne 'HASH') {
       $addError->("an object is required");
+      return;
     }
 
     foreach my $i (keys %$objTypeDef) {
@@ -470,7 +483,7 @@ sub _die_on_warnings {
   @args
     = map { ref $_ ? Data::Dumper->new([$_])->Indent(0)->Maxdepth(4)->Sortkeys(1)->Terse(1)->Useqq(1)->Dump : qq("$_") }
     @args;
-  die sprintf '%s($self, %s): %s', $caller, join(', ', @args), $_[0];
+  Carp::confess(sprintf '%s($self, %s): %s', $caller, join(', ', @args), $_[0]);
 }
 
 1;

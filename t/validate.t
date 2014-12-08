@@ -15,7 +15,8 @@ my $swagger   = Swagger2->new($json_file);
 plan skip_all => "Cannot read $json_file"           unless -r $json_file;
 plan skip_all => "Cannot read $Swagger2::SPEC_FILE" unless -r $Swagger2::SPEC_FILE;
 
-is_deeply $swagger->validate, [], 'petstore.json';
+my $res = $swagger->validate;
+is_deeply $res, [], 'petstore.json' or diag Data::Dumper::Dumper($res);
 
 $swagger->tree->data->{foo} = 123;
 is_deeply $swagger->validate, [], 'petstore.json with foo';
