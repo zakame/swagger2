@@ -331,13 +331,19 @@ sub _resolve {
   $self->_resolve_deep($pointer, '');
   $namespace = Mojo::URL->new($namespace || $pointer->get('/id'));
 
-  for (@refs) {
+  for (sort { length($b) <=> length($a) } @refs) {
     my ($p, $path, $url) = @$_;
-    my $name = $path =~ s!/([^/]+)$!! ? $1 : 'UNDEF';
+    my $k    = $path =~ s!/([^/]+)$!! ? $1 : 'UNDEF';
     my $node = $p->get($path);
-    if (ref $node eq 'HASH' and ref $node->{$name} eq 'HASH' and $node->{$name}{$REF}) {
-      my $doc = $self->_load(($url->host or $url->path->to_string) ? $url : $namespace);
-      $node->{$name} = $doc->get($url->fragment);
+    my $doc  = $self->_load(($url->host or $url->path->to_string) ? $url : $namespace);
+
+    warn "[Swagger2::resolve] $pointer $path/$k => $url\n" if DEBUG;
+    $k =~ s!~1!/!g;
+    if (ref $node eq 'ARRAY') {
+      $node->[$k] = $doc->get($url->fragment);
+    }
+    else {
+      $node->{$k} = $doc->get($url->fragment);
     }
   }
 
@@ -367,11 +373,9 @@ sub _resolve_deep {
       my $p = $name;
       $p =~ s!/!~1!g;
       if (ref $in->{$name} eq 'HASH') {
-        warn "[Swagger2::resolve] $pointer->{data}{id} $in $path/$p\n" if DEBUG;
         $self->_resolve_deep($pointer, "$path/$p");
       }
       elsif (ref $in->{$name} eq 'ARRAY') {
-        warn "[Swagger2::resolve] $in $path/$p\n" if DEBUG;
         for my $i (0 .. @{$in->{$name}} - 1) {
           $self->_resolve_deep($pointer, "$path/$p/$i");
         }
