@@ -19,6 +19,6 @@ my @err = $swagger->validate;
 is_deeply \@err, [], 'petstore.json' or diag Data::Dumper::Dumper(\@err);
 
 $swagger->tree->data->{foo} = 123;
-is_deeply $swagger->validate, [], 'petstore.json with foo';
+is_deeply [$swagger->validate], ['Properties not allowed: foo.'], 'petstore.json with foo';
 
 done_testing;

@@ -55,6 +55,9 @@ use File::Spec;
 use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
 use constant DEBUG     => $ENV{SWAGGER2_DEBUG}     || 0;
 
+# jht: Not sure why this is required at all
+use constant MAX_RESOLVE_DEPTH => $ENV{SWAGGER2_MAX_RESOLVE_DEPTH} || 10;
+
 our $VERSION = '0.02';
 
 # Should be considered internal
@@ -357,9 +360,8 @@ sub _resolve_deep {
   if (ref $in ne 'HASH') {
     return;
   }
-
-  if (++$self->{_resolve_deep} > 100) {
-    Carp::confess($path);
+  if (++$self->{resolve_deep} > MAX_RESOLVE_DEPTH) {
+    return;
   }
 
   if ($in->{$REF} and ref $in->{$REF} eq '') {
@@ -387,7 +389,7 @@ sub _resolve_deep {
     }
   }
 
-  $self->{_resolve_deep}--;
+  $self->{resolve_deep}--;
 }
 
 =head1 COPYRIGHT AND LICENSE
