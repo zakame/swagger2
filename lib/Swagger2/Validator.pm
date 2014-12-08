@@ -97,7 +97,7 @@ sub _validate {
     }
   }
 
-  if (@errors > 1) {
+  if (@errors > 1 and ref $type eq 'ARRAY') {
     my @types = map { ref $_ ? $_->{type} || 'complex' : $_ } @$type;
     my $l = pop @types;
     return E $path, sprintf "Value (%s) did not match %s or %s.", $data // 'null', join(', ', @types), $l;
@@ -111,9 +111,12 @@ sub _validate_additional_properties {
   my $properties = $schema->{additionalProperties};
   my @errors;
 
-  if (!$properties and keys %$data) {
-    local $" = ', ';
-    push @errors, E $path, "Properties not allowed: @{[keys %$data]}.";
+  if (!$properties) {
+    my @keys = grep { $_ !~ /^(description|id|title)$/ } keys %$data;
+    if (@keys) {
+      local $" = ', ';
+      push @errors, E $path, "Properties not allowed: @keys.";
+    }
   }
   if (ref $properties eq 'HASH') {
     push @errors, $self->_validate_properties($data, $path, $schema);
@@ -165,7 +168,7 @@ sub _validate_properties {
     elsif ($v->{default}) {
       $data->{$name} = $v->{default};
     }
-    elsif ($v->{required}) {
+    elsif ($v->{required} and ref $v->{required} eq '') {
       push @errors, E "$path/$name", "Missing property: ($name)";
     }
   }

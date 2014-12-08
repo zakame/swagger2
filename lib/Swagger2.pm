@@ -358,6 +358,10 @@ sub _resolve_deep {
     return;
   }
 
+  if (++$self->{_resolve_deep} > 100) {
+    Carp::confess($path);
+  }
+
   if ($in->{$REF} and ref $in->{$REF} eq '') {
     my $url = Mojo::URL->new($in->{$REF});
     warn "[Swagger2::resolve] $pointer->{data}{id} $REF: $path => $url\n" if DEBUG;
@@ -382,6 +386,8 @@ sub _resolve_deep {
       }
     }
   }
+
+  $self->{_resolve_deep}--;
 }
 
 =head1 COPYRIGHT AND LICENSE
