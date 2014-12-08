@@ -362,6 +362,7 @@ package    # hide from
   Swagger2::Validator::Error;
 
 use overload q("") => sub { shift->{message} }, bool => sub {1}, fallback => 1;
+sub TO_JSON { {message => $_[0]->{message}, path => $_[0]->{path}} }
 
 =head1 COPYRIGHT AND LICENSE
 
