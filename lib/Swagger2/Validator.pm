@@ -18,16 +18,21 @@ L<Swagger2::Validator> is a class for valditing JSON schemas.
 =cut
 
 use Mojo::Base -base;
+use Mojo::Util;
 use B;
 
 sub E {
   bless {path => $_[0], message => $_[1]}, 'Swagger2::Validator::Error';
 }
 
+sub S {
+  Mojo::Util::md5_sum(Data::Dumper->new([@_])->Sortkeys(1)->Useqq(1)->Dump);
+}
+
 sub _cmp {
-  return undef    if !defined $_[0];
+  return undef if !defined $_[0] or !defined $_[1];
   return "$_[3]=" if $_[2] and $_[0] >= $_[1];
-  return $_[3]    if $_[0] > $_[1];
+  return $_[3] if $_[0] > $_[1];
   return "";
 }
 
@@ -58,9 +63,32 @@ sub validate {
 
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
-  my $validator = sprintf '_validate_type_%s', $schema->{type} || 'any';
+  my $type = $schema->{type} || 'any';
+  my (@e, @errors);
 
-  return $self->$validator($data, $path, $schema);
+  for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
+    if (ref $t eq 'HASH') {
+      @e = $self->_validate_type_object($data, $path, $t);
+      return unless @e;    # valid
+      push @errors, @e;
+    }
+    elsif (my $code = $self->can(sprintf '_validate_type_%s', $t)) {
+      @e = $self->$code($data, $path, $schema);
+      return unless @e;    # valid
+      push @errors, @e;
+    }
+    else {
+      return E $path, "Cannot validate type '$t'";
+    }
+  }
+
+  if (@errors > 1) {
+    my @types = map { ref $_ ? $_->{type} || 'complex' : $_ } @$type;
+    my $l = pop @types;
+    return E $path, sprintf "Value (%s) did not match %s or %s.", $data // 'null', join(', ', @types), $l;
+  }
+
+  return @errors;
 }
 
 sub _validate_additional_properties {
@@ -70,13 +98,26 @@ sub _validate_additional_properties {
 
   if (!$properties and keys %$data) {
     local $" = ', ';
-    push @errors, E $path, "These additional properties are not allowed: @{[keys %$data]}";
+    push @errors, E $path, "Properties not allowed: @{[keys %$data]}.";
   }
   if (ref $properties eq 'HASH') {
     push @errors, $self->_validate_properties($data, $path, $schema);
   }
 
   return @errors;
+}
+
+sub _validate_enum {
+  my ($self, $data, $path, $schema) = @_;
+  my $enum = $schema->{enum};
+  my $m    = S $data;
+
+  for my $i (@$enum) {
+    return if $m eq S $i;
+  }
+
+  local $" = ', ';
+  return E $path, "Not in enum list: @$enum.";
 }
 
 sub _validate_pattern_properties {
@@ -86,11 +127,9 @@ sub _validate_pattern_properties {
 
   for my $pattern (keys %$properties) {
     my $v = $properties->{$pattern};
-    my $validator = sprintf '_validate_type_%s', $v->{type} || 'any';
-
     for my $tk (keys %$data) {
       next unless $tk =~ /$pattern/;
-      push @errors, $self->$validator(delete $data->{$tk}, "/$tk", $v);
+      push @errors, $self->_validate(delete $data->{$tk}, "/$tk", $v);
     }
   }
 
@@ -104,10 +143,9 @@ sub _validate_properties {
 
   for my $name (keys %$properties) {
     my $v = $properties->{$name};
-    my $validator = sprintf '_validate_type_%s', $v->{type} || 'any';
-
     if (exists $data->{$name}) {
-      push @errors, $self->$validator(delete $data->{$name}, "$path/$name", $v);
+      push @errors, $self->_validate_enum($data->{$name}, $path, $v) if $v->{enum};
+      push @errors, $self->_validate(delete $data->{$name}, "$path/$name", $v);
     }
     elsif ($v->{required}) {
       push @errors, E "$path/$name", "Missing property: ($name)";
@@ -139,6 +177,7 @@ sub _validate_type_array {
   my @errors;
 
   if (ref $data ne 'ARRAY') {
+    $data //= 'null';
     return E $path, "Not an array: ($data)";
   }
 
@@ -151,7 +190,12 @@ sub _validate_type_array {
     push @errors, E $path, sprintf 'Too many items. %s/%s', int @$data, $schema->{maxItems};
   }
   if ($schema->{uniqueItems}) {
-    push @errors, E $path, 'TODO: "uniqueItems"';
+    my %uniq;
+    for (@$data) {
+      next if !$uniq{S($_)}++;
+      push @errors, E $path, 'Unique items required.';
+      last;
+    }
   }
   if (ref $schema->{items} eq 'ARRAY') {
     my @v = @{$schema->{items}};
@@ -162,8 +206,7 @@ sub _validate_type_array {
 
     if (@v == @$data) {
       for my $i (0 .. @v - 1) {
-        my $validator = sprintf '_validate_type_%s', $v[$i]{type} || 'any';
-        push @errors, $self->$validator($data->[$i], "$path/$i", $v[$i]);
+        push @errors, $self->_validate($data->[$i], "$path/$i", $v[$i]);
       }
     }
     else {
@@ -171,27 +214,45 @@ sub _validate_type_array {
     }
   }
   elsif (ref $schema->{items} eq 'HASH') {
-    my $validator = sprintf '_validate_type_%s', $schema->{items}{type} || 'any';
     for my $i (0 .. @$data - 1) {
-      push @errors, $self->$validator($data->[$i], "$path/$i", $schema->{items});
+      push @errors, $self->_validate($data->[$i], "$path/$i", $schema->{items});
     }
   }
+
+  return @errors;
+}
+
+sub _validate_type_boolean {
+  my ($self, $value, $path, $schema) = @_;
+
+  return E $path, 'Not boolean: (null)' if !defined $value;
+  return if "$value" eq "1" or "$value" eq "0";
+  return E $path, "Not boolean: ($value)";
 }
 
 sub _validate_type_integer {
   my ($self, $value, $path, $schema) = @_;
-  my @errors = $self->_validate_type_numeric($value, $path, $schema);
+  my @errors = $self->_validate_type_number($value, $path, $schema);
 
   return @errors if @errors;
   return if $value =~ /^\d+$/;
   return E $path, "Not an integer: ($value)";
 }
 
-sub _validate_type_numeric {
+sub _validate_type_null {
+  my ($self, $value, $path, $schema) = @_;
+
+  return E $path, 'Not null.' if defined $value;
+  return;
+}
+
+sub _validate_type_number {
   my ($self, $value, $path, $schema) = @_;
   my @errors;
 
-  # Number logic (from Mojo::JSON)
+  unless (defined $value) {
+    return E $path, "Not a number: (null)";
+  }
   unless (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
     return E $path, "Not a number: ($value)";
   }
@@ -215,10 +276,15 @@ sub _validate_type_object {
   my ($self, $data, $path, $schema) = @_;
   my @errors;
 
+  if (ref $data ne 'HASH') {
+    $data //= 'null';
+    return E $path, "Not an object: ($data)";
+  }
+
   # make sure _validate_xxx() does not mess up original $data
   $data = {%$data};
 
-  if ($schema->{required}) {
+  if (ref $schema->{required} eq 'HASH') {
     push @errors, $self->_validate_required($data, $path, $schema);
   }
   if (defined $schema->{maxProperties} and $schema->{maxProperties} < keys %$data) {
@@ -245,7 +311,7 @@ sub _validate_type_string {
   my @errors;
 
   if (!defined $value or ref $value) {
-    $value = defined $value ? qq('$value') : q(null);
+    $value = defined $value ? qq($value) : q(null);
     return E $path, "Not a string: ($value)";
   }
   if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
@@ -274,7 +340,7 @@ sub _validate_type_string {
 package    # hide from
   Swagger2::Validator::Error;
 
-use overload (q("") => sub { shift->{message} }, bool => sub {1}, fallback => 1,);
+use overload q("") => sub { shift->{message} }, bool => sub {1}, fallback => 1;
 
 =head1 COPYRIGHT AND LICENSE
 

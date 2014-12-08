@@ -1,8 +1,10 @@
 use Mojo::Base -strict;
 use Test::More;
-use Swagger2::SchemaValidator;
+use Swagger2::Validator;
 
-my $validator = Swagger2::SchemaValidator->new;
+#$SIG{__DIE__} = sub { Carp::confess($_[0]) };
+
+my $validator = Swagger2::Validator->new;
 
 my $schema1 = {
   type                 => 'object',
@@ -34,79 +36,73 @@ my $schema3 = {
   properties           => {test => {type => [qw/object array string number integer boolean null/], required => 1}}
 };
 
-my $result = $validator->validate({test => "strang"}, $schema1);
-ok !$result->{valid}, 'boolean or integer against string' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+my @errors = $validator->validate({test => "strang"}, $schema1);
+is "@errors", "Value (strang) did not match boolean or integer.", 'boolean or integer against string';
 
-$result = $validator->validate({test => 1}, $schema1);
-ok $result->{valid}, 'boolean or integer against integer' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 1}, $schema1);
+is "@errors", "", 'boolean or integer against integer';
 
-$result = $validator->validate({test => ['array']}, $schema1);
-ok not($result->{valid}), 'boolean or integer against array'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => ['array']}, $schema1);
+like "@errors", qr{Value \(ARRAY\S+ did not match boolean or integer}, 'boolean or integer against array';
 
-$result = $validator->validate({test => {object => 'yipe'}}, $schema1);
-ok !$result->{valid}, 'boolean or integer against object' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {object => 'yipe'}}, $schema1);
+like "@errors", qr{Value \(HASH\S+ did not match boolean or integer}, 'boolean or integer against object';
 
-$result = $validator->validate({test => 1.1}, $schema1);
-ok not($result->{valid}), 'boolean or integer against number'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 1.1}, $schema1);
+is "@errors", "Value (1.1) did not match boolean or integer.", 'boolean or integer against number';
 
-$result = $validator->validate({test => !!1}, $schema1);
-ok $result->{valid}, 'boolean or integer against boolean' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => !!1}, $schema1);
+is "@errors", "", 'boolean or integer against boolean';
 
-$result = $validator->validate({test => undef}, $schema1);
-ok !$result->{valid}, 'boolean or integer against null' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => undef}, $schema1);
+is "@errors", "Value (null) did not match boolean or integer.", 'boolean or integer against null';
 
-$result = $validator->validate({test => {dog => "woof"}}, $schema2);
-ok $result->{valid}, 'object or object against object a' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {dog => "woof"}}, $schema2);
+is "@errors", "", 'object or object against object a';
 
-$result = $validator->validate({test => {sound => "meow"}}, $schema2);
-ok $result->{valid}, 'object or object against object b nested enum pass'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {sound => "meow"}}, $schema2);
+is "@errors", "", 'object or object against object b nested enum pass';
 
-$result = $validator->validate({test => {sound => "oink"}}, $schema2);
-ok not($result->{valid}), 'object or object against object b enum fail'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {sound => "oink"}}, $schema2);
+like "@errors", qr{Value \(HASH\S+ did not match object or object}, 'object or object against object b enum fail';
 
-$result = $validator->validate({test => {audible => "meow"}}, $schema2);
-ok !$result->{valid}, 'object or object against invalid object'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {audible => "meow"}}, $schema2);
+like "@errors", qr{Value \(HASH.*object}, 'object or object against invalid object';
 
-$result = $validator->validate({test => 2}, $schema2);
-ok !$result->{valid}, 'object or object against integer' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 2}, $schema2);
+like "@errors", qr{Value \(2.*object}, 'object or object against integer';
 
-$result = $validator->validate({test => 2.2}, $schema2);
-ok !$result->{valid}, 'object or object against number' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 2.2}, $schema2);
+like "@errors", qr{Value \(2\.2.*object}, 'object or object against number';
 
-$result = $validator->validate({test => !1}, $schema2);
-ok !$result->{valid}, 'object or object against boolean' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => !1}, $schema2);
+like "@errors", qr{Value \(\).*object}, 'object or object against boolean';
 
-$result = $validator->validate({test => undef}, $schema2);
-ok !$result->{valid}, 'object or object against null' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => undef}, $schema2);
+like "@errors", qr{Value \(null.*object}, 'object or object against null';
 
-$result = $validator->validate({test => {dog => undef}}, $schema2);
-ok not($result->{valid}), 'object or object against object a bad inner type'
-  or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {dog => undef}}, $schema2);
+like "@errors", qr{Value \(HASH.*object}, 'object or object against object a bad inner type';
 
-$result = $validator->validate({test => {dog => undef}}, $schema3);
-ok $result->{valid}, 'all types against object' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => {dog => undef}}, $schema3);
+is "@errors", "", 'all types against object';
 
-$result = $validator->validate({test => ['dog']}, $schema3);
-ok $result->{valid}, 'all types against array' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => ['dog']}, $schema3);
+is "@errors", "", 'all types against array';
 
-$result = $validator->validate({test => 'dog'}, $schema3);
-ok $result->{valid}, 'all types against string' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 'dog'}, $schema3);
+is "@errors", "", 'all types against string';
 
-$result = $validator->validate({test => 1.1}, $schema3);
-ok $result->{valid}, 'all types against number' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 1.1}, $schema3);
+is "@errors", "", 'all types against number';
 
-$result = $validator->validate({test => 1}, $schema3);
-ok $result->{valid}, 'all types against integer' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 1}, $schema3);
+is "@errors", "", 'all types against integer';
 
-$result = $validator->validate({test => 1}, $schema3);
-ok $result->{valid}, 'all types against boolean' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => 1}, $schema3);
+is "@errors", "", 'all types against boolean';
 
-$result = $validator->validate({test => undef}, $schema3);
-ok $result->{valid}, 'all types against null' or map { diag "reason: $_->{message}" } @{$result->{errors}};
+@errors = $validator->validate({test => undef}, $schema3);
+is "@errors", "", 'all types against null';
 
 done_testing;
