@@ -147,6 +147,9 @@ sub _validate_properties {
       push @errors, $self->_validate_enum($data->{$name}, $path, $v) if $v->{enum};
       push @errors, $self->_validate(delete $data->{$name}, "$path/$name", $v);
     }
+    elsif ($v->{default}) {
+      $data->{$name} = $v->{default};
+    }
     elsif ($v->{required}) {
       push @errors, E "$path/$name", "Missing property: ($name)";
     }
