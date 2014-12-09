@@ -84,7 +84,7 @@ sub validate {
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
   my ($type) = (map { $schema->{$_} } grep { $schema->{$_} } qw( type allOf anyOf oneOf ))[0] || 'any';
-  my $i = 0;
+  my $check_all = grep { $schema->{$_} } qw( allOf oneOf );
   my @errors;
 
   if ($schema->{disallow}) {
@@ -93,19 +93,22 @@ sub _validate {
 
   for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
     if (ref $t eq 'HASH') {
-      $errors[$i] = [$self->_validate($data, $path, $t)];
-      return if !$schema->{allOf} and !@{$errors[$i]};    # valid
+      push @errors, [$self->_validate($data, $path, $t)];
+      return if !$check_all and !@{$errors[-1]};    # valid
     }
     elsif (my $code = $self->can(sprintf '_validate_type_%s', $t)) {
-      $errors[$i] = [$self->$code($data, $path, $schema)];
-      return if !$schema->{allOf} and !@{$errors[$i]};    # valid
+      push @errors, [$self->$code($data, $path, $schema)];
+      return if !$check_all and !@{$errors[-1]};    # valid
     }
     else {
       return E $path, "Cannot validate type '$t'";
     }
   }
-  continue {
-    $i++;
+
+  if ($schema->{oneOf}) {
+    my $n = grep { @$_ == 0 } @errors;
+    return if $n == 1;                              # one match
+    return E $path, "Expected only one to match." if $n == @errors;
   }
 
   if (@errors > 1) {
