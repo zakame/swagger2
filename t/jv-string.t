@@ -1,34 +1,45 @@
 use Mojo::Base -strict;
 use Test::More;
 use Swagger2::Validator;
+use utf8;
 
 my $validator = Swagger2::Validator->new;
 my $schema = {type => 'object',
   properties => {nick => {type => 'string', minLength => 3, maxLength => 10, pattern => qr{^\w+$}}}};
 
-my $data = {nick => 'batman'};
-my @errors = $validator->validate($data, $schema);
+my @errors = $validator->validate({nick => 'batman'}, $schema);
 is "@errors", "", "batman";
 
-$data = {nick => 1000};
-@errors = $validator->validate($data, $schema);
-is "@errors", "/nick: Not a string: (1000)", "integer";
+@errors = $validator->validate({nick => 1000}, $schema);
+is "@errors", "/nick: Expected string. Got number.", "integer";
 
-$data = {nick => '2000'};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({nick => '1000'}, $schema);
 is "@errors", "", "number as string";
 
-$data = {nick => 'aa'};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({nick => 'aa'}, $schema);
 is "@errors", "/nick: String is too short: 2/3", "too short";
 
-$data = {nick => 'a' x 11};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({nick => 'a' x 11}, $schema);
 is "@errors", "/nick: String is too long: 11/10", "too long";
 
-$data = {nick => '[nick]'};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({nick => '[nick]'}, $schema);
 like "@errors", qr{/nick: String does not match}, "pattern";
 
-done_testing;
+delete $schema->{properties}{nick}{pattern};
+@errors = $validator->validate({nick => 'Déjà vu'}, $schema);
+is "@errors", "", "unicode";
 
+local $TODO = 'format support is not implemented';
+$schema->{properties}{nick}{format} = 'email';
+@errors = $validator->validate({nick => 'foo'}, $schema);
+is "@errors", "/nick: invalid format", "unicode";
+
+#formats:
+#date-time: RFC 3339 / 5.6
+#email: RFC 5322 / 3.4.1
+#hostname: RFC 1034 / 3.1
+#ipv4: RFC 2673 / 3.2
+#ipv6: RFC 2373 / 2.2
+#uri: RFC3986
+
+done_testing;

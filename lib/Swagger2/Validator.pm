@@ -22,7 +22,7 @@ use Mojo::Util;
 use B;
 
 sub E {
-  bless {path => $_[0], message => $_[1]}, 'Swagger2::Validator::Error';
+  bless {path => $_[0] || '/', message => $_[1]}, 'Swagger2::Validator::Error';
 }
 
 sub S {
@@ -34,6 +34,13 @@ sub _cmp {
   return "$_[3]=" if $_[2] and $_[0] >= $_[1];
   return $_[3] if $_[0] > $_[1];
   return "";
+}
+
+sub _expected {
+  return "Expected $_[0]. Got null." unless defined $_[1];
+  my $ref = lc ref $_[1];
+  return "Expected $_[0]. Got object." if $ref eq 'hash';
+  return "Expected $_[0]. Got $ref.";
 }
 
 =head1 ATTRIBUTES
@@ -111,15 +118,15 @@ sub _validate_additional_properties {
   my $properties = $schema->{additionalProperties};
   my @errors;
 
-  if (!$properties) {
+  if (ref $properties eq 'HASH') {
+    push @errors, $self->_validate_properties($data, $path, $schema);
+  }
+  elsif (!$properties) {
     my @keys = grep { $_ !~ /^(description|id|title)$/ } keys %$data;
     if (@keys) {
       local $" = ', ';
       push @errors, E $path, "Properties not allowed: @keys.";
     }
-  }
-  if (ref $properties eq 'HASH') {
-    push @errors, $self->_validate_properties($data, $path, $schema);
   }
 
   return @errors;
@@ -198,8 +205,7 @@ sub _validate_type_array {
   my @errors;
 
   if (ref $data ne 'ARRAY') {
-    $data //= 'null';
-    return E $path, "Not an array: ($data)";
+    return E $path, _expected(array => $data);
   }
 
   $data = [@$data];
@@ -219,9 +225,10 @@ sub _validate_type_array {
     }
   }
   if (ref $schema->{items} eq 'ARRAY') {
+    my $additional_items = $schema->{additionalItems} // 1;
     my @v = @{$schema->{items}};
 
-    if (my $a = $schema->{additionalItems}) {
+    if ($additional_items) {
       push @v, $a while @v < @$data;
     }
 
@@ -230,7 +237,7 @@ sub _validate_type_array {
         push @errors, $self->_validate($data->[$i], "$path/$i", $v[$i]);
       }
     }
-    else {
+    elsif (!$additional_items) {
       push @errors, E $path, sprintf "Invalid number of items. %s/%s", int(@$data), int(@v);
     }
   }
@@ -253,11 +260,11 @@ sub _validate_type_boolean {
 
 sub _validate_type_integer {
   my ($self, $value, $path, $schema) = @_;
-  my @errors = $self->_validate_type_number($value, $path, $schema);
+  my @errors = $self->_validate_type_number($value, $path, $schema, 'integer');
 
   return @errors if @errors;
   return if $value =~ /^\d+$/;
-  return E $path, "Not an integer: ($value)";
+  return E $path, "Expected integer. Got number.";
 }
 
 sub _validate_type_null {
@@ -268,14 +275,16 @@ sub _validate_type_null {
 }
 
 sub _validate_type_number {
-  my ($self, $value, $path, $schema) = @_;
+  my ($self, $value, $path, $schema, $expected) = @_;
   my @errors;
 
-  unless (defined $value) {
-    return E $path, "Not a number: (null)";
+  $expected ||= 'number';
+
+  if (!defined $value or ref $value) {
+    return E $path, _expected($expected => $value);
   }
   unless (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, "Not a number: ($value)";
+    return E $path, "Expected $expected. Got string.";
   }
 
   if (my $e = _cmp($schema->{minimum}, $value, $schema->{exclusiveMinimum}, '<')) {
@@ -284,9 +293,9 @@ sub _validate_type_number {
   if (my $e = _cmp($value, $schema->{maximum}, $schema->{exclusiveMaximum}, '>')) {
     push @errors, E $path, "$value $e maximum($schema->{maximum})";
   }
-  if (my $d = $schema->{divisibleBy}) {
+  if (my $d = $schema->{multipleOf}) {
     unless (int($value / $d) == $value / $d) {
-      push @errors, E $path, "$value is not divisible by $d.";
+      push @errors, E $path, "Not multiple of $d.";
     }
   }
 
@@ -298,14 +307,13 @@ sub _validate_type_object {
   my @errors;
 
   if (ref $data ne 'HASH') {
-    $data //= 'null';
-    return E $path, "Not an object: ($data)";
+    return E $path, _expected(object => $data);
   }
 
   # make sure _validate_xxx() does not mess up original $data
   $data = {%$data};
 
-  if (ref $schema->{required} eq 'HASH') {
+  if (ref $schema->{required} eq 'ARRAY') {
     push @errors, $self->_validate_required($data, $path, $schema);
   }
   if (defined $schema->{maxProperties} and $schema->{maxProperties} < keys %$data) {
@@ -332,11 +340,10 @@ sub _validate_type_string {
   my @errors;
 
   if (!defined $value or ref $value) {
-    $value = defined $value ? qq($value) : q(null);
-    return E $path, "Not a string: ($value)";
+    return E $path, _expected(string => $value);
   }
   if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, "Not a string: ($value)";
+    return E $path, "Expected string. Got number.";
   }
   if (defined $schema->{maxLength}) {
     if (length($value) > $schema->{maxLength}) {

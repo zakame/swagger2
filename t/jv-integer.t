@@ -5,33 +5,30 @@ use Swagger2::Validator;
 my $validator = Swagger2::Validator->new;
 my $schema = {type => 'object', properties => {mynumber => {type => 'integer', minimum => 1, maximum => 4}}};
 
-my $data = {mynumber => 1};
-my @errors = $validator->validate($data, $schema);
+my @errors = $validator->validate({mynumber => 1}, $schema);
 is "@errors", "", "min";
 
-$data = {mynumber => 4};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({mynumber => 4}, $schema);
 is "@errors", "", "max";
 
-$data = {mynumber => 2};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({mynumber => 2}, $schema);
 is "@errors", "", "in the middle";
 
-$data = {mynumber => 0};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({mynumber => 0}, $schema);
 is "@errors", "/mynumber: 0 < minimum(1)", 'too small';
 
-$data = {mynumber => -1};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({mynumber => -1}, $schema);
 is "@errors", "/mynumber: -1 < minimum(1)", 'too small and neg';
 
-$data = {mynumber => 5};
-@errors = $validator->validate($data, $schema);
+@errors = $validator->validate({mynumber => 5}, $schema);
 is "@errors", "/mynumber: 5 > maximum(4)", "too big";
 
-$data = {mynumber => "2"};
-@errors = $validator->validate($data, $schema);
-is "@errors", "/mynumber: Not a number: (2)", "a string";
+@errors = $validator->validate({mynumber => "2"}, $schema);
+is "@errors", "/mynumber: Expected integer. Got string.", "a string";
+
+$schema->{properties}{mynumber}{multipleOf} = 2;
+@errors = $validator->validate({mynumber => 3}, $schema);
+is "@errors", "/mynumber: Not multiple of 2.", "multipleOf";
 
 done_testing;
 
