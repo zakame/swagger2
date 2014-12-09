@@ -83,8 +83,8 @@ sub validate {
 
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
-  my ($type) = (map { $schema->{$_} } grep { $schema->{$_} } qw( type allOf anyOf oneOf ))[0] || 'any';
-  my $check_all = grep { $schema->{$_} } qw( allOf oneOf );
+  my ($type) = (map { $schema->{$_} } grep { $schema->{$_} } qw( type allOf anyOf oneOf not ))[0] || 'any';
+  my $check_all = grep { $schema->{$_} } qw( allOf oneOf not );
   my @errors;
 
   if ($schema->{disallow}) {
@@ -105,9 +105,13 @@ sub _validate {
     }
   }
 
+  if ($schema->{not}) {
+    return if grep {@$_} @errors;
+    return E $path, "Should not match.";
+  }
   if ($schema->{oneOf}) {
     my $n = grep { @$_ == 0 } @errors;
-    return if $n == 1;                              # one match
+    return if $n == 1;    # one match
     return E $path, "Expected only one to match." if $n == @errors;
   }
 
