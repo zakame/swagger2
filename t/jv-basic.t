@@ -23,7 +23,7 @@ is "@errors", "", "boolean false";
 @errors = $validator->validate(j(Mojo::JSON->true), {type => 'boolean'});
 is "@errors", "", "boolean true";
 @errors = $validator->validate(j("foo"), {type => 'boolean'});
-is "@errors", "/: Expected boolean. Got string.", "not boolean";
+is "@errors", "/: Expected boolean - got string.", "not boolean";
 
 done_testing;
 

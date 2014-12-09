@@ -24,7 +24,7 @@ is "@errors", "/mynumber: -1 < minimum(1)", 'too small and neg';
 is "@errors", "/mynumber: 5 > maximum(4)", "too big";
 
 @errors = $validator->validate({mynumber => "2"}, $schema);
-is "@errors", "/mynumber: Expected integer. Got string.", "a string";
+is "@errors", "/mynumber: Expected integer - got string.", "a string";
 
 $schema->{properties}{mynumber}{multipleOf} = 2;
 @errors = $validator->validate({mynumber => 3}, $schema);

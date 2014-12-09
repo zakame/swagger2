@@ -36,25 +36,25 @@ my $schema3 = {
 };
 
 my @errors = $validator->validate({test => "strang"}, $schema1);
-is "@errors", "/test: Expected boolean, integer. Got string.", 'boolean or integer against string';
+is "@errors", "/test: Expected boolean, integer - got string.", 'boolean or integer against string';
 
 @errors = $validator->validate({test => 1}, $schema1);
 is "@errors", "", 'boolean or integer against integer';
 
 @errors = $validator->validate({test => ['array']}, $schema1);
-is "@errors", "/test: Expected boolean, integer. Got array.", 'boolean or integer against array';
+is "@errors", "/test: Expected boolean, integer - got array.", 'boolean or integer against array';
 
 @errors = $validator->validate({test => {object => 'yipe'}}, $schema1);
-is "@errors", "/test: Expected boolean, integer. Got object.", 'boolean or integer against object';
+is "@errors", "/test: Expected boolean, integer - got object.", 'boolean or integer against object';
 
 @errors = $validator->validate({test => 1.1}, $schema1);
-is "@errors", "/test: Expected boolean, integer. Got number.", 'boolean or integer against number';
+is "@errors", "/test: Expected boolean, integer - got number.", 'boolean or integer against number';
 
 @errors = $validator->validate({test => !!1}, $schema1);
 is "@errors", "", 'boolean or integer against boolean';
 
 @errors = $validator->validate({test => undef}, $schema1);
-is "@errors", "/test: Expected boolean, integer. Got null.", 'boolean or integer against null';
+is "@errors", "/test: Expected boolean, integer - got null.", 'boolean or integer against null';
 
 @errors = $validator->validate({test => {dog => "woof"}}, $schema2);
 is "@errors", "", 'object or object against object a';
@@ -72,21 +72,21 @@ is $errors[1], '/test/dog: Missing property.',            '/test/dog';
 is $errors[2], '/test/sound: Missing property.',          '/test/sound';
 
 @errors = $validator->validate({test => 2}, $schema2);
-is "@errors", "/test: Expected object. Got integer.", "object or object against integer";
+is "@errors", "/test: Expected object - got integer.", "object or object against integer";
 
 @errors = $validator->validate({test => 2.2}, $schema2);
-is "@errors", "/test: Expected object. Got number.", "object or object against number";
+is "@errors", "/test: Expected object - got number.", "object or object against number";
 
 @errors = $validator->validate({test => Mojo::JSON->true}, $schema2);
-is "@errors", "/test: Expected object. Got boolean.", "object or object against boolean";
+is "@errors", "/test: Expected object - got boolean.", "object or object against boolean";
 
 @errors = $validator->validate({test => undef}, $schema2);
-is "@errors", "/test: Expected object. Got null.", "object or object against null";
+is "@errors", "/test: Expected object - got null.", "object or object against null";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema2);
-is $errors[0], "/test: Properties not allowed: dog.",   "object or object against object a bad inner type";
-is $errors[1], "/test/dog: Expected string. Got null.", "object or object against object a bad inner type";
-is $errors[2], "/test/sound: Missing property.",        "object or object against object a bad inner type";
+is $errors[0], "/test: Properties not allowed: dog.",    "object or object against object a bad inner type";
+is $errors[1], "/test/dog: Expected string - got null.", "object or object against object a bad inner type";
+is $errors[2], "/test/sound: Missing property.",         "object or object against object a bad inner type";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema3);
 is "@errors", "", 'all types against object';

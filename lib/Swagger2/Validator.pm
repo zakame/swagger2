@@ -39,8 +39,8 @@ sub _cmp {
 
 sub _expected {
   my $type = _guess($_[1]);
-  return "Expected $_[0]. Got different $type." if $_[0] =~ /\b$type\b/;
-  return "Expected $_[0]. Got $type.";
+  return "Expected $_[0] - got different $type." if $_[0] =~ /\b$type\b/;
+  return "Expected $_[0] - got $type.";
 }
 
 sub _guess {
@@ -112,8 +112,8 @@ sub _validate {
     my %err;
     for my $i (0 .. @errors - 1) {
       for my $e (@{$errors[$i]}) {
-        if ($e->{message} =~ m!Expected ([^\.]+)\. Got ([^\.]+)\.!) {
-          push @{$err{$e->{path}}}, [$i, $1, $2];
+        if ($e->{message} =~ m!Expected ([^\.]+)\ - got ([^\.]+)\.!) {
+          push @{$err{$e->{path}}}, [$i, $e->{message}, $1, $2];
         }
         else {
           push @{$err{$e->{path}}}, [$i, $e->{message}];
@@ -124,8 +124,8 @@ sub _validate {
     for my $p (sort keys %err) {
       my %uniq;
       my @e = grep { !$uniq{$_->[1]}++ } @{$err{$p}};
-      if (defined $e[0][2]) {
-        push @{$errors[0]}, E $p, sprintf 'Expected %s. Got %s.', join(', ', map { $_->[1] } @e), $e[0][2];
+      if (@e == grep { defined $_->[2] } @e) {
+        push @{$errors[0]}, E $p, sprintf 'Expected %s - got %s.', join(', ', map { $_->[2] } @e), $e[0][3];
       }
       else {
         push @{$errors[0]}, E $p, join ' ', map { @e > 1 ? "[$_->[0]] $_->[1]" : $_->[1] } @e;
@@ -287,7 +287,7 @@ sub _validate_type_integer {
 
   return @errors if @errors;
   return if $value =~ /^\d+$/;
-  return E $path, "Expected integer. Got number.";
+  return E $path, "Expected integer - got number.";
 }
 
 sub _validate_type_null {
@@ -307,7 +307,7 @@ sub _validate_type_number {
     return E $path, _expected($expected => $value);
   }
   unless (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, "Expected $expected. Got string.";
+    return E $path, "Expected $expected - got string.";
   }
 
   if (my $e = _cmp($schema->{minimum}, $value, $schema->{exclusiveMinimum}, '<')) {
@@ -366,7 +366,7 @@ sub _validate_type_string {
     return E $path, _expected(string => $value);
   }
   if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, "Expected string. Got number.";
+    return E $path, "Expected string - got number.";
   }
   if (defined $schema->{maxLength}) {
     if (length($value) > $schema->{maxLength}) {

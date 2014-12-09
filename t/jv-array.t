@@ -22,7 +22,7 @@ my $tuple = {
 @errors = $validator->validate([1], $simple);
 is "@errors", "", "simple: success";
 @errors = $validator->validate([1, "foo"], $simple);
-is "@errors", "/1: Expected number. Got string.", "simple: got string";
+is "@errors", "/1: Expected number - got string.", "simple: got string";
 
 @errors = $validator->validate([1], $length);
 is "@errors", "/: Not enough items: 1/2.", "length: not enough";

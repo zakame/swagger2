@@ -10,7 +10,7 @@ my ($schema, @errors);
   @errors = $validator->validate({mynumber => 1}, $schema);
   is "@errors", "", "object";
   @errors = $validator->validate([1], $schema);
-  is "@errors", "/: Expected object. Got array.", "got array";
+  is "@errors", "/: Expected object - got array.", "got array";
 }
 
 {
@@ -24,7 +24,7 @@ my ($schema, @errors);
   @errors = $validator->validate({number => 1600, street_name => "Pennsylvania", street_type => "Avenue"}, $schema);
   is "@errors", "", "object with properties";
   @errors = $validator->validate({number => "1600", street_name => "Pennsylvania", street_type => "Avenue"}, $schema);
-  is "@errors", "/number: Expected number. Got string.", "object with invalid number";
+  is "@errors", "/number: Expected number - got string.", "object with invalid number";
   @errors = $validator->validate({number => 1600, street_name => "Pennsylvania"}, $schema);
   is "@errors", "", "object with missing properties";
   @errors
@@ -35,7 +35,7 @@ my ($schema, @errors);
   @errors = $validator->validate({"S_25" => "This is a string", "I_0" => 42}, $schema);
   is "@errors", "", "S_25 I_0";
   @errors = $validator->validate({"S_0" => 42}, $schema);
-  is "@errors", "/S_0: Expected string. Got number.", "S_0";
+  is "@errors", "/S_0: Expected string - got number.", "S_0";
 }
 
 {

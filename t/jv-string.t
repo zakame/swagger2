@@ -11,7 +11,7 @@ my @errors = $validator->validate({nick => 'batman'}, $schema);
 is "@errors", "", "batman";
 
 @errors = $validator->validate({nick => 1000}, $schema);
-is "@errors", "/nick: Expected string. Got number.", "integer";
+is "@errors", "/nick: Expected string - got number.", "integer";
 
 @errors = $validator->validate({nick => '1000'}, $schema);
 is "@errors", "", "number as string";
