@@ -2,8 +2,6 @@ use Mojo::Base -strict;
 use Test::More;
 use Swagger2::Validator;
 
-#$SIG{__DIE__} = sub { Carp::confess($_[0]) };
-
 my $validator = Swagger2::Validator->new;
 
 my $schema1 = {

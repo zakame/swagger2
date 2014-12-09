@@ -38,7 +38,7 @@ sub _cmp {
 
 sub _expected {
   return "Expected $_[0]. Got null." unless defined $_[1];
-  my $ref = lc ref $_[1] || 'string';
+  my $ref = lc ref $_[1] || 'something else';
   return "Expected $_[0]. Got object." if $ref eq 'hash';
   return "Expected $_[0]. Got $ref.";
 }
@@ -81,7 +81,7 @@ sub validate {
 
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
-  my $type = $schema->{type} || 'any';
+  my $type = $schema->{type} || $schema->{anyOf} || 'any';
   my (@e, @errors);
 
   if ($schema->{disallow}) {
@@ -90,7 +90,7 @@ sub _validate {
 
   for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
     if (ref $t eq 'HASH') {
-      @e = $self->_validate_type_object($data, $path, $t);
+      @e = $self->_validate($data, $path, $t);
       return unless @e;    # valid
       push @errors, @e;
     }
@@ -107,7 +107,7 @@ sub _validate {
   if (@errors > 1 and ref $type eq 'ARRAY') {
     my @types = map { ref $_ ? $_->{type} || 'complex' : $_ } @$type;
     my $l = pop @types;
-    return E $path, sprintf "Value (%s) did not match %s or %s.", $data // 'null', join(', ', @types), $l;
+    return E $path, _expected(sprintf('%s or %s', join(', ', @types), $l), $data);
   }
 
   return @errors;
