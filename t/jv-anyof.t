@@ -2,12 +2,9 @@ use Mojo::Base -strict;
 use Test::More;
 use Swagger2::Validator;
 
-#$SIG{__DIE__} = sub { Carp::confess($_[0]) };
-
 my $validator = Swagger2::Validator->new;
+my $schema = {anyOf => [{type => "string", maxLength => 5}, {type => "number", minimum => 0}]};
 my @errors;
-
-my $schema = {anyOf => [{type => "string", maxLength => 5}, {type => "number", minimum => 0}],};
 
 @errors = $validator->validate("short", $schema);
 is "@errors", "", "short";

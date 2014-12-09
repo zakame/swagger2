@@ -64,12 +64,12 @@ is "@errors", "", 'object or object against object b nested enum pass';
 
 @errors = $validator->validate({test => {sound => "oink"}}, $schema2);
 is $errors[0], '/test: [0] Properties not allowed: sound. [1] Not in enum list: bark, meow, squeak.', '/test';
-is $errors[1], '/test/dog: Missing property.', '/test/dog';
+is $errors[1], '/test/dog: [0] Missing property.', '/test/dog';
 
 @errors = $validator->validate({test => {audible => "meow"}}, $schema2);
-is $errors[0], '/test: Properties not allowed: audible.', '/test';
-is $errors[1], '/test/dog: Missing property.',            '/test/dog';
-is $errors[2], '/test/sound: Missing property.',          '/test/sound';
+is $errors[0], '/test: [0] Properties not allowed: audible.', '/test';
+is $errors[1], '/test/dog: [0] Missing property.',            '/test/dog';
+is $errors[2], '/test/sound: [1] Missing property.',          '/test/sound';
 
 @errors = $validator->validate({test => 2}, $schema2);
 is "@errors", "/test: Expected object - got integer.", "object or object against integer";
@@ -84,9 +84,9 @@ is "@errors", "/test: Expected object - got boolean.", "object or object against
 is "@errors", "/test: Expected object - got null.", "object or object against null";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema2);
-is $errors[0], "/test: Properties not allowed: dog.",    "object or object against object a bad inner type";
-is $errors[1], "/test/dog: Expected string - got null.", "object or object against object a bad inner type";
-is $errors[2], "/test/sound: Missing property.",         "object or object against object a bad inner type";
+is $errors[0], "/test: [1] Properties not allowed: dog.", "object or object against object a bad inner type";
+is $errors[1], "/test/dog: Expected string - got null.",  "object or object against object a bad inner type";
+is $errors[2], "/test/sound: [1] Missing property.",      "object or object against object a bad inner type";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema3);
 is "@errors", "", 'all types against object';

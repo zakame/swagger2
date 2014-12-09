@@ -83,7 +83,7 @@ sub validate {
 
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
-  my $type = $schema->{type} || $schema->{anyOf} || 'any';
+  my ($type) = (map { $schema->{$_} } grep { $schema->{$_} } qw( type allOf anyOf oneOf ))[0] || 'any';
   my $i = 0;
   my @errors;
 
@@ -94,11 +94,11 @@ sub _validate {
   for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
     if (ref $t eq 'HASH') {
       $errors[$i] = [$self->_validate($data, $path, $t)];
-      return unless @{$errors[$i]};    # valid
+      return if !$schema->{allOf} and !@{$errors[$i]};    # valid
     }
     elsif (my $code = $self->can(sprintf '_validate_type_%s', $t)) {
       $errors[$i] = [$self->$code($data, $path, $schema)];
-      return unless @{$errors[$i]};    # valid
+      return if !$schema->{allOf} and !@{$errors[$i]};    # valid
     }
     else {
       return E $path, "Cannot validate type '$t'";
@@ -128,7 +128,7 @@ sub _validate {
         push @{$errors[0]}, E $p, sprintf 'Expected %s - got %s.', join(', ', map { $_->[2] } @e), $e[0][3];
       }
       else {
-        push @{$errors[0]}, E $p, join ' ', map { @e > 1 ? "[$_->[0]] $_->[1]" : $_->[1] } @e;
+        push @{$errors[0]}, E $p, join ' ', map {"[$_->[0]] $_->[1]"} @e;
       }
     }
   }
