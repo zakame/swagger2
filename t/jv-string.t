@@ -17,10 +17,10 @@ is "@errors", "/nick: Expected string. Got number.", "integer";
 is "@errors", "", "number as string";
 
 @errors = $validator->validate({nick => 'aa'}, $schema);
-is "@errors", "/nick: String is too short: 2/3", "too short";
+is "@errors", "/nick: String is too short: 2/3.", "too short";
 
 @errors = $validator->validate({nick => 'a' x 11}, $schema);
-is "@errors", "/nick: String is too long: 11/10", "too long";
+is "@errors", "/nick: String is too long: 11/10.", "too long";
 
 @errors = $validator->validate({nick => '[nick]'}, $schema);
 like "@errors", qr{/nick: String does not match}, "pattern";

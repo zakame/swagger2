@@ -19,6 +19,7 @@ L<Swagger2::Validator> is a class for valditing JSON schemas.
 
 use Mojo::Base -base;
 use Mojo::Util;
+use Scalar::Util;
 use B;
 
 sub E {
@@ -37,22 +38,23 @@ sub _cmp {
 }
 
 sub _expected {
-  return "Expected $_[0]. Got null." unless defined $_[1];
-  my $ref = lc ref $_[1] || 'something else';
-  return "Expected $_[0]. Got object." if $ref eq 'hash';
-  return "Expected $_[0]. Got $ref.";
+  my $type = _guess($_[1]);
+  return "Expected $_[0]. Got different $type." if $_[0] =~ /\b$type\b/;
+  return "Expected $_[0]. Got $type.";
 }
 
-=head1 ATTRIBUTES
-
-=head2 formats
-
-TODO
-
-=cut
-
-has formats => sub {
-};
+sub _guess {
+  local $_ = $_[0];
+  my $ref     = ref;
+  my $blessed = Scalar::Util::blessed($_[0]);
+  return 'object' if $ref eq 'HASH';
+  return lc $ref if $ref and !$blessed;
+  return 'null' if !defined;
+  return 'boolean' if $blessed and "$_" eq "1" or "$_" eq "0";
+  return 'integer' if /^\d+$/;
+  return 'number' if B::svref_2object(\$_)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $_ eq $_ and $_ * 0 == 0;
+  return $blessed || 'string';
+}
 
 =head1 METHODS
 
@@ -82,7 +84,8 @@ sub validate {
 sub _validate {
   my ($self, $data, $path, $schema) = @_;
   my $type = $schema->{type} || $schema->{anyOf} || 'any';
-  my (@e, @errors);
+  my $i = 0;
+  my @errors;
 
   if ($schema->{disallow}) {
     die 'TODO: No support for disallow.';
@@ -90,27 +93,47 @@ sub _validate {
 
   for my $t (ref $type eq 'ARRAY' ? @$type : ($type)) {
     if (ref $t eq 'HASH') {
-      @e = $self->_validate($data, $path, $t);
-      return unless @e;    # valid
-      push @errors, @e;
+      $errors[$i] = [$self->_validate($data, $path, $t)];
+      return unless @{$errors[$i]};    # valid
     }
     elsif (my $code = $self->can(sprintf '_validate_type_%s', $t)) {
-      @e = $self->$code($data, $path, $schema);
-      return unless @e;    # valid
-      push @errors, @e;
+      $errors[$i] = [$self->$code($data, $path, $schema)];
+      return unless @{$errors[$i]};    # valid
     }
     else {
       return E $path, "Cannot validate type '$t'";
     }
   }
-
-  if (@errors > 1 and ref $type eq 'ARRAY') {
-    my @types = map { ref $_ ? $_->{type} || 'complex' : $_ } @$type;
-    my $l = pop @types;
-    return E $path, _expected(sprintf('%s or %s', join(', ', @types), $l), $data);
+  continue {
+    $i++;
   }
 
-  return @errors;
+  if (@errors > 1) {
+    my %err;
+    for my $i (0 .. @errors - 1) {
+      for my $e (@{$errors[$i]}) {
+        if ($e->{message} =~ m!Expected ([^\.]+)\. Got ([^\.]+)\.!) {
+          push @{$err{$e->{path}}}, [$i, $1, $2];
+        }
+        else {
+          push @{$err{$e->{path}}}, [$i, $e->{message}];
+        }
+      }
+    }
+    unshift @errors, [];
+    for my $p (sort keys %err) {
+      my %uniq;
+      my @e = grep { !$uniq{$_->[1]}++ } @{$err{$p}};
+      if (defined $e[0][2]) {
+        push @{$errors[0]}, E $p, sprintf 'Expected %s. Got %s.', join(', ', map { $_->[1] } @e), $e[0][2];
+      }
+      else {
+        push @{$errors[0]}, E $p, join ' ', map { @e > 1 ? "[$_->[0]] $_->[1]" : $_->[1] } @e;
+      }
+    }
+  }
+
+  return @{$errors[0]};
 }
 
 sub _validate_additional_properties {
@@ -167,15 +190,16 @@ sub _validate_properties {
   my @errors;
 
   for my $name (keys %$properties) {
-    my $v = $properties->{$name};
+    my $p = $properties->{$name};
     if (exists $data->{$name}) {
-      push @errors, $self->_validate_enum($data->{$name}, $path, $v) if $v->{enum};
-      push @errors, $self->_validate(delete $data->{$name}, "$path/$name", $v);
+      my $v = delete $data->{$name};
+      push @errors, $self->_validate_enum($v, $path, $p) if $p->{enum};
+      push @errors, $self->_validate($v, "$path/$name", $p);
     }
-    elsif ($v->{default}) {
-      $data->{$name} = $v->{default};
+    elsif ($p->{default}) {
+      $data->{$name} = $p->{default};
     }
-    elsif ($v->{required} and ref $v->{required} eq '') {
+    elsif ($p->{required} and ref $p->{required} eq '') {
       push @errors, E "$path/$name", "Missing property.";
     }
   }
@@ -211,10 +235,10 @@ sub _validate_type_array {
   $data = [@$data];
 
   if (defined $schema->{minItems} and $schema->{minItems} > @$data) {
-    push @errors, E $path, sprintf 'Not enough items. %s/%s', int @$data, $schema->{minItems};
+    push @errors, E $path, sprintf 'Not enough items: %s/%s.', int @$data, $schema->{minItems};
   }
   if (defined $schema->{maxItems} and $schema->{maxItems} < @$data) {
-    push @errors, E $path, sprintf 'Too many items. %s/%s', int @$data, $schema->{maxItems};
+    push @errors, E $path, sprintf 'Too many items: %s/%s.', int @$data, $schema->{maxItems};
   }
   if ($schema->{uniqueItems}) {
     my %uniq;
@@ -238,7 +262,7 @@ sub _validate_type_array {
       }
     }
     elsif (!$additional_items) {
-      push @errors, E $path, sprintf "Invalid number of items. %s/%s", int(@$data), int(@v);
+      push @errors, E $path, sprintf "Invalid number of items: %s/%s.", int(@$data), int(@v);
     }
   }
   elsif (ref $schema->{items} eq 'HASH') {
@@ -316,10 +340,10 @@ sub _validate_type_object {
     push @errors, $self->_validate_required($data, $path, $schema);
   }
   if (defined $schema->{maxProperties} and $schema->{maxProperties} < keys %$data) {
-    push @errors, E $path, sprintf 'Too many properties. %s/%s', int(keys %$data), $schema->{maxProperties};
+    push @errors, E $path, sprintf 'Too many properties: %s/%s.', int(keys %$data), $schema->{maxProperties};
   }
   if (defined $schema->{minProperties} and $schema->{minProperties} > keys %$data) {
-    push @errors, E $path, sprintf 'Not enough properties. %s/%s', int(keys %$data), $schema->{minProperties};
+    push @errors, E $path, sprintf 'Not enough properties: %s/%s.', int(keys %$data), $schema->{minProperties};
   }
   if ($schema->{properties}) {
     push @errors, $self->_validate_properties($data, $path, $schema);
@@ -346,12 +370,12 @@ sub _validate_type_string {
   }
   if (defined $schema->{maxLength}) {
     if (length($value) > $schema->{maxLength}) {
-      push @errors, E $path, sprintf "String is too long: %s/%s", length($value), $schema->{maxLength};
+      push @errors, E $path, sprintf "String is too long: %s/%s.", length($value), $schema->{maxLength};
     }
   }
   if (defined $schema->{minLength}) {
     if (length($value) < $schema->{minLength}) {
-      push @errors, E $path, sprintf "String is too short: %s/%s", length($value), $schema->{minLength};
+      push @errors, E $path, sprintf "String is too short: %s/%s.", length($value), $schema->{minLength};
     }
   }
   if (defined $schema->{pattern}) {

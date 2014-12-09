@@ -1,6 +1,7 @@
 use Mojo::Base -strict;
 use Test::More;
 use Swagger2::Validator;
+use Mojo::JSON;
 
 my $validator = Swagger2::Validator->new;
 
@@ -35,25 +36,25 @@ my $schema3 = {
 };
 
 my @errors = $validator->validate({test => "strang"}, $schema1);
-is "@errors", "/test: Value (strang) did not match boolean or integer.", 'boolean or integer against string';
+is "@errors", "/test: Expected boolean, integer. Got string.", 'boolean or integer against string';
 
 @errors = $validator->validate({test => 1}, $schema1);
 is "@errors", "", 'boolean or integer against integer';
 
 @errors = $validator->validate({test => ['array']}, $schema1);
-like "@errors", qr{Value \(ARRAY\S+ did not match boolean or integer}, 'boolean or integer against array';
+is "@errors", "/test: Expected boolean, integer. Got array.", 'boolean or integer against array';
 
 @errors = $validator->validate({test => {object => 'yipe'}}, $schema1);
-like "@errors", qr{Value \(HASH\S+ did not match boolean or integer}, 'boolean or integer against object';
+is "@errors", "/test: Expected boolean, integer. Got object.", 'boolean or integer against object';
 
 @errors = $validator->validate({test => 1.1}, $schema1);
-is "@errors", "/test: Value (1.1) did not match boolean or integer.", 'boolean or integer against number';
+is "@errors", "/test: Expected boolean, integer. Got number.", 'boolean or integer against number';
 
 @errors = $validator->validate({test => !!1}, $schema1);
 is "@errors", "", 'boolean or integer against boolean';
 
 @errors = $validator->validate({test => undef}, $schema1);
-is "@errors", "/test: Value (null) did not match boolean or integer.", 'boolean or integer against null';
+is "@errors", "/test: Expected boolean, integer. Got null.", 'boolean or integer against null';
 
 @errors = $validator->validate({test => {dog => "woof"}}, $schema2);
 is "@errors", "", 'object or object against object a';
@@ -62,25 +63,30 @@ is "@errors", "", 'object or object against object a';
 is "@errors", "", 'object or object against object b nested enum pass';
 
 @errors = $validator->validate({test => {sound => "oink"}}, $schema2);
-like "@errors", qr{Value \(HASH\S+ did not match object or object}, 'object or object against object b enum fail';
+is $errors[0], '/test: [0] Properties not allowed: sound. [1] Not in enum list: bark, meow, squeak.', '/test';
+is $errors[1], '/test/dog: Missing property.', '/test/dog';
 
 @errors = $validator->validate({test => {audible => "meow"}}, $schema2);
-like "@errors", qr{Value \(HASH.*object}, 'object or object against invalid object';
+is $errors[0], '/test: Properties not allowed: audible.', '/test';
+is $errors[1], '/test/dog: Missing property.',            '/test/dog';
+is $errors[2], '/test/sound: Missing property.',          '/test/sound';
 
 @errors = $validator->validate({test => 2}, $schema2);
-like "@errors", qr{Value \(2.*object}, 'object or object against integer';
+is "@errors", "/test: Expected object. Got integer.", "object or object against integer";
 
 @errors = $validator->validate({test => 2.2}, $schema2);
-like "@errors", qr{Value \(2\.2.*object}, 'object or object against number';
+is "@errors", "/test: Expected object. Got number.", "object or object against number";
 
-@errors = $validator->validate({test => !1}, $schema2);
-like "@errors", qr{Value \(\).*object}, 'object or object against boolean';
+@errors = $validator->validate({test => Mojo::JSON->true}, $schema2);
+is "@errors", "/test: Expected object. Got boolean.", "object or object against boolean";
 
 @errors = $validator->validate({test => undef}, $schema2);
-like "@errors", qr{Value \(null.*object}, 'object or object against null';
+is "@errors", "/test: Expected object. Got null.", "object or object against null";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema2);
-like "@errors", qr{Value \(HASH.*object}, 'object or object against object a bad inner type';
+is $errors[0], "/test: Properties not allowed: dog.",   "object or object against object a bad inner type";
+is $errors[1], "/test/dog: Expected string. Got null.", "object or object against object a bad inner type";
+is $errors[2], "/test/sound: Missing property.",        "object or object against object a bad inner type";
 
 @errors = $validator->validate({test => {dog => undef}}, $schema3);
 is "@errors", "", 'all types against object';

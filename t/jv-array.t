@@ -25,11 +25,11 @@ is "@errors", "", "simple: success";
 is "@errors", "/1: Expected number. Got string.", "simple: got string";
 
 @errors = $validator->validate([1], $length);
-is "@errors", "/: Not enough items. 1/2", "length: not enough";
+is "@errors", "/: Not enough items: 1/2.", "length: not enough";
 @errors = $validator->validate([1, 2], $length);
 is "@errors", "", "length: success";
 @errors = $validator->validate([1, 2, 3], $length);
-is "@errors", "/: Too many items. 3/2", "length: too many";
+is "@errors", "/: Too many items: 3/2.", "length: too many";
 
 @errors = $validator->validate([123, 124], $unique);
 is "@errors", "", "unique: success";
@@ -47,6 +47,6 @@ is "@errors", "", "tuple: too many";
 
 $tuple->{additionalItems} = Mojo::JSON->false;
 @errors = $validator->validate([1600, "Pennsylvania", "Avenue", "NW", "Washington"], $tuple);
-is "@errors", "/: Invalid number of items. 5/4", "tuple: additionalItems";
+is "@errors", "/: Invalid number of items: 5/4.", "tuple: additionalItems";
 
 done_testing;
