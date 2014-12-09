@@ -38,7 +38,7 @@ sub _cmp {
 
 sub _expected {
   return "Expected $_[0]. Got null." unless defined $_[1];
-  my $ref = lc ref $_[1];
+  my $ref = lc ref $_[1] || 'string';
   return "Expected $_[0]. Got object." if $ref eq 'hash';
   return "Expected $_[0]. Got $ref.";
 }
@@ -253,9 +253,8 @@ sub _validate_type_array {
 sub _validate_type_boolean {
   my ($self, $value, $path, $schema) = @_;
 
-  return E $path, 'Not boolean: (null)' if !defined $value;
-  return if "$value" eq "1" or "$value" eq "0";
-  return E $path, "Not boolean: ($value)";
+  return if defined $value and ("$value" eq "1" or "$value" eq "0");
+  return E $path, _expected(boolean => $value);
 }
 
 sub _validate_type_integer {
