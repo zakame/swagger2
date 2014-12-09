@@ -169,7 +169,7 @@ sub _validate_properties {
       $data->{$name} = $v->{default};
     }
     elsif ($v->{required} and ref $v->{required} eq '') {
-      push @errors, E "$path/$name", "Missing property: ($name)";
+      push @errors, E "$path/$name", "Missing property.";
     }
   }
 
@@ -183,7 +183,7 @@ sub _validate_required {
 
   for my $name (@$properties) {
     next if defined $data->{$name};
-    push @errors, E "$path/$name", "Missing property: ($name)";
+    push @errors, E "$path/$name", "Missing property.";
   }
 
   return @errors;
@@ -361,7 +361,7 @@ sub _validate_type_string {
 package    # hide from
   Swagger2::Validator::Error;
 
-use overload q("") => sub { shift->{message} }, bool => sub {1}, fallback => 1;
+use overload q("") => sub { sprintf '%s: %s', @{$_[0]}{qw( path message )} }, bool => sub {1}, fallback => 1;
 sub TO_JSON { {message => $_[0]->{message}, path => $_[0]->{path}} }
 
 =head1 COPYRIGHT AND LICENSE

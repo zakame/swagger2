@@ -13,7 +13,7 @@ my @errors = $validator->validate($data1, $schema1);
 is "@errors", "", "data1, schema1";
 
 @errors = $validator->validate($data2, $schema1);
-is "@errors", "Missing property: (mynumber)", "data2, schema1";
+is "@errors", "/mynumber: Missing property.", "data2, schema1";
 
 @errors = $validator->validate($data1, $schema2);
 is "@errors", "", "data1, schema2";

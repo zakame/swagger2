@@ -12,7 +12,7 @@ is "@errors", "", "batman";
 
 $data = {nick => 1000};
 @errors = $validator->validate($data, $schema);
-is "@errors", "Not a string: (1000)", "integer";
+is "@errors", "/nick: Not a string: (1000)", "integer";
 
 $data = {nick => '2000'};
 @errors = $validator->validate($data, $schema);
@@ -20,15 +20,15 @@ is "@errors", "", "number as string";
 
 $data = {nick => 'aa'};
 @errors = $validator->validate($data, $schema);
-is "@errors", "String is too short: 2/3", "too short";
+is "@errors", "/nick: String is too short: 2/3", "too short";
 
 $data = {nick => 'a' x 11};
 @errors = $validator->validate($data, $schema);
-is "@errors", "String is too long: 11/10", "too long";
+is "@errors", "/nick: String is too long: 11/10", "too long";
 
 $data = {nick => '[nick]'};
 @errors = $validator->validate($data, $schema);
-like "@errors", qr{String does not match}, "pattern";
+like "@errors", qr{/nick: String does not match}, "pattern";
 
 done_testing;
 

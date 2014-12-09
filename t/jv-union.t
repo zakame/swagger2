@@ -37,7 +37,7 @@ my $schema3 = {
 };
 
 my @errors = $validator->validate({test => "strang"}, $schema1);
-is "@errors", "Value (strang) did not match boolean or integer.", 'boolean or integer against string';
+is "@errors", "/test: Value (strang) did not match boolean or integer.", 'boolean or integer against string';
 
 @errors = $validator->validate({test => 1}, $schema1);
 is "@errors", "", 'boolean or integer against integer';
@@ -49,13 +49,13 @@ like "@errors", qr{Value \(ARRAY\S+ did not match boolean or integer}, 'boolean 
 like "@errors", qr{Value \(HASH\S+ did not match boolean or integer}, 'boolean or integer against object';
 
 @errors = $validator->validate({test => 1.1}, $schema1);
-is "@errors", "Value (1.1) did not match boolean or integer.", 'boolean or integer against number';
+is "@errors", "/test: Value (1.1) did not match boolean or integer.", 'boolean or integer against number';
 
 @errors = $validator->validate({test => !!1}, $schema1);
 is "@errors", "", 'boolean or integer against boolean';
 
 @errors = $validator->validate({test => undef}, $schema1);
-is "@errors", "Value (null) did not match boolean or integer.", 'boolean or integer against null';
+is "@errors", "/test: Value (null) did not match boolean or integer.", 'boolean or integer against null';
 
 @errors = $validator->validate({test => {dog => "woof"}}, $schema2);
 is "@errors", "", 'object or object against object a';

@@ -19,19 +19,19 @@ is "@errors", "", "in the middle";
 
 $data = {mynumber => 0};
 @errors = $validator->validate($data, $schema);
-is "@errors", "0 < minimum(1)", 'too small';
+is "@errors", "/mynumber: 0 < minimum(1)", 'too small';
 
 $data = {mynumber => -1};
 @errors = $validator->validate($data, $schema);
-is "@errors", "-1 < minimum(1)", 'too small and neg';
+is "@errors", "/mynumber: -1 < minimum(1)", 'too small and neg';
 
 $data = {mynumber => 5};
 @errors = $validator->validate($data, $schema);
-is "@errors", "5 > maximum(4)", "too big";
+is "@errors", "/mynumber: 5 > maximum(4)", "too big";
 
 $data = {mynumber => "2"};
 @errors = $validator->validate($data, $schema);
-is "@errors", "Not a number: (2)", "a string";
+is "@errors", "/mynumber: Not a number: (2)", "a string";
 
 done_testing;
 
