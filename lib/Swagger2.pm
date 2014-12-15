@@ -6,7 +6,7 @@ Swagger2 - Swagger RESTful API Documentation
 
 =head1 VERSION
 
-0.08
+0.09
 
 =head1 DESCRIPTION
 
@@ -54,7 +54,7 @@ use Mojo::Util 'md5_sum';
 use File::Spec;
 use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 # Should be considered internal
 our $SPEC_FILE = do {
@@ -63,13 +63,13 @@ our $SPEC_FILE = do {
 };
 
 my @YAML_MODULES = qw( YAML::Tiny YAML YAML::Syck YAML::XS );
-my $YAML_MODULE
-  = $ENV{SWAGGER2_YAML_MODULE} || (grep { eval "require $_;1" } @YAML_MODULES)[0] || 'Swagger2::__Missing__';
+my $YAML_MODULE = $ENV{SWAGGER2_YAML_MODULE} || (grep { eval "require $_;1" } @YAML_MODULES)[0] || 'Swagger2::FALLBACK';
 
-Mojo::Util::monkey_patch(__PACKAGE__,
-  LoadYAML => eval "\\\&$YAML_MODULE\::Load" || sub { die "Need to install a YAML module: @YAML_MODULES" });
-Mojo::Util::monkey_patch(__PACKAGE__,
-  DumpYAML => eval "\\\&$YAML_MODULE\::Dump" || sub { die "Need to install a YAML module: @YAML_MODULES" });
+sub Swagger2::FALLBACK::Dump { die "Need to install a YAML module: @YAML_MODULES"; }
+sub Swagger2::FALLBACK::Load { die "Need to install a YAML module: @YAML_MODULES"; }
+
+Mojo::Util::monkey_patch __PACKAGE__, LoadYAML => eval "\\\&$YAML_MODULE\::Load";
+Mojo::Util::monkey_patch __PACKAGE__, DumpYAML => eval "\\\&$YAML_MODULE\::Dump";
 
 =head1 ATTRIBUTES
 
@@ -285,7 +285,7 @@ sub _load {
   # load spec from disk or web
   if (!CACHE_DIR or !$doc) {
     if ($scheme eq 'file') {
-      $doc = Mojo::Util::slurp($url->path);
+      $doc = Mojo::Util::slurp(File::Spec->catfile(split '/', $url->path));
       $type = lc $1 if $url->path =~ /\.(yaml|json)$/i;
     }
     else {

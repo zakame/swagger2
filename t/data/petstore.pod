@@ -18,15 +18,15 @@ finds pets in the system
 
 =head3 Resource URL
 
-  GET http://petstore.swagger.wordnik.com/api/%2Fpets
+  GET http://petstore.swagger.wordnik.com/api/pets
 
 =head3 Parameters
 
-  .---------------------------------------------------------------------------.
-  | Name  | In    | Required | Description                                    |
-  |---------------------------------------------------------------------------|
-  | limit | query | No       | How many items to return at one time (max 100) |
-  '---------------------------------------------------------------------------'
+  .-------------------------------------------------------------------------------------.
+  | Name  | In    | Type    | Required | Description                                    |
+  |-------------------------------------------------------------------------------------|
+  | limit | query | integer | No       | How many items to return at one time (max 100) |
+  '-------------------------------------------------------------------------------------'
 
 =head3 Responses
 
@@ -42,6 +42,43 @@ pet response
     },
     ...
   ]
+
+=head3 Default
+
+unexpected error
+
+  {
+    "code": int32, // required
+    "message": string, // required
+  },
+
+=head2 showPetById
+
+Info for a specific pet
+
+=head3 Resource URL
+
+  GET http://petstore.swagger.wordnik.com/api/pets/{petId}
+
+=head3 Parameters
+
+  .------------------------------------------------------------------.
+  | Name  | In   | Type    | Required | Description                  |
+  |------------------------------------------------------------------|
+  | petId | path | integer | No       | The id of the pet to receive |
+  '------------------------------------------------------------------'
+
+=head3 Responses
+
+=head3 200 - OK
+
+Expected response to a valid request
+
+  {
+    "id": int64, // required
+    "name": string, // required
+    "tag": string, // No description.
+  },
 
 =head3 Default
 
