@@ -6,7 +6,7 @@ Swagger2 - Swagger RESTful API Documentation
 
 =head1 VERSION
 
-0.09
+0.11
 
 =head1 DESCRIPTION
 
@@ -54,7 +54,7 @@ use Mojo::Util 'md5_sum';
 use File::Spec;
 use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
 
-our $VERSION = '0.09';
+our $VERSION = '0.11';
 
 # Should be considered internal
 our $SPEC_FILE = do {
@@ -207,6 +207,44 @@ sub new {
   $self;
 }
 
+=head2 parse
+
+  $self = $self->parse($text);
+
+Used to parse C<$text> instead of L<loading|/load> data from L</url>.
+
+The type of input text can be either JSON or YAML. It will default to JSON,
+but parse the text as YAML if it starts with "---".
+
+=cut
+
+sub parse {
+  my ($self, $doc) = @_;
+  my $type = $doc =~ /^---/ ? 'yaml' : 'json';
+  my $namespace = 'http://127.0.0.1/#';
+
+  # parse the document
+  eval { $doc = $type eq 'yaml' ? LoadYAML($doc) : decode_json($doc); } or do {
+    die "Could not load document: $@ ($doc)";
+  };
+
+  $doc                           = Mojo::JSON::Pointer->new($doc);
+  $self->{url}                   = Mojo::URL->new($namespace);
+  $self->{tree}                  = $doc;
+  $self->{loaded}{$namespace}    = $doc;
+  $self->{namespace}{$namespace} = $namespace;
+
+  if (my $id = $doc->data->{id}) {
+    $self->{loaded}{$id} = $self->{loaded}{$namespace};
+    $self->{namespace}{id} = $namespace;
+  }
+  else {
+    $doc->data->{id} = "$namespace";
+  }
+
+  return $self;
+}
+
 =head2 pod
 
   $pod_object = $self->pod;
@@ -354,6 +392,7 @@ sub _resolve_deep {
       $out->{$name} = [];    # Fix "Not an ARRAY reference at lib/Swagger2.pm line 356."
       for my $i (0 .. @{$in->{$name}} - 1) {
         $out->{$name}[$i] = $in->{$name}[$i];
+        $self->_track_ref($in->{$name}[$i], $i, $out->{$name}) and next;
         $self->_resolve_deep($pointer, "$path/$p/$i", $out->{$name}[$i]);
       }
     }
@@ -384,15 +423,20 @@ sub _resolve_refs {
 sub _track_ref {
   my ($self, $in, $key, $out) = @_;
 
+  return 0 if ref $in ne 'HASH';
   return 0 if !$in->{'$ref'};
   return 0 if ref $in->{'$ref'};
 
   my $url = Mojo::URL->new($in->{'$ref'});
   push @{$self->{refs}}, [$out, $key, $url];
 
-  if ($url->scheme or $url->path->to_string) {
+  if ($url->scheme or ($url->path->to_string and $url->fragment)) {
     my $doc = $self->_load($url);
     $self->_resolve_deep($doc, $url->fragment, $out);
+  }
+  elsif (!$url->fragment) {
+    $url->fragment(sprintf '/definitions/%s', $url->path);
+    $url->path('');
   }
 
   return 1;

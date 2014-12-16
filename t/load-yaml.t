@@ -3,16 +3,20 @@ use Test::More;
 use Swagger2;
 use File::Spec::Functions 'catfile';
 
-my $yaml_file = catfile qw( t data petstore.yaml );
-my $swagger   = Swagger2->new;
-
 plan skip_all => $@ unless eval { Swagger2::LoadYAML("---\nfoo: bar") };
-plan skip_all => "Cannot read $yaml_file" unless -r $yaml_file;
 
-is $swagger->load($yaml_file), $swagger, 'load()';
+my $swagger = Swagger2->new;
+
+is $swagger->load('t/data/petstore.yaml'), $swagger, 'load()';
 is $swagger->tree->get('/swagger'), '2.0', 'tree.swagger';
 
 like $swagger->to_string('json'), qr{"host":"petstore\.swagger\.wordnik\.com"}, 'to_string json';
 like $swagger->to_string('yaml'), qr{\s-\sapplication/json}, 'to_string yaml';
+
+is $swagger->tree->get('/paths/~1pets/post/responses/default/schema/$ref'), 'Error', 'Error ref';
+my $expanded = eval { $swagger->expand };
+ok $expanded, 'expanded plain $ref';
+is $expanded->tree->get('/paths/~1pets/post/responses/default/schema/properties/message/type'), 'string',
+  'expanded default response';
 
 done_testing;
