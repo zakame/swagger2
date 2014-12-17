@@ -6,7 +6,7 @@ Swagger2 - Swagger RESTful API Documentation
 
 =head1 VERSION
 
-0.11
+0.12
 
 =head1 DESCRIPTION
 
@@ -51,15 +51,16 @@ use Mojo::JSON qw( encode_json decode_json );
 use Mojo::JSON::Pointer;
 use Mojo::URL;
 use Mojo::Util 'md5_sum';
+use File::Basename ();
 use File::Spec;
 use constant CACHE_DIR => $ENV{SWAGGER2_CACHE_DIR} || '';
+use constant DEBUG     => $ENV{SWAGGER2_DEBUG}     || 0;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 # Should be considered internal
 our $SPEC_FILE = do {
-  use File::Basename 'dirname';
-  File::Spec->catfile(dirname(__FILE__), 'Swagger2', 'schema.json');
+  join '/', File::Spec->splitdir(File::Basename::dirname(__FILE__)), 'Swagger2', 'schema.json';
 };
 
 my @YAML_MODULES = qw( YAML::Tiny YAML YAML::Syck YAML::XS );
@@ -164,7 +165,7 @@ are resolved.
 sub expand {
   my $self     = shift;
   my $class    = Scalar::Util::blessed($self);
-  my $expanded = $self->_resolve($self->tree, $self->url->clone->fragment(undef));
+  my $expanded = $self->_expand($self->tree);
 
   $class->new(%$self)->tree($expanded);
 }
@@ -213,36 +214,19 @@ sub new {
 
 Used to parse C<$text> instead of L<loading|/load> data from L</url>.
 
-The type of input text can be either JSON or YAML. It will default to JSON,
-but parse the text as YAML if it starts with "---".
+The type of input text can be either JSON or YAML. It will default to YAML,
+but parse the text as JSON if it starts with "{".
 
 =cut
 
 sub parse {
   my ($self, $doc) = @_;
-  my $type = $doc =~ /^---/ ? 'yaml' : 'json';
+  my $type = $doc =~ /^\s*\{/s ? 'json' : 'yaml';
   my $namespace = 'http://127.0.0.1/#';
 
-  # parse the document
-  eval { $doc = $type eq 'yaml' ? LoadYAML($doc) : decode_json($doc); } or do {
-    die "Could not load document: $@ ($doc)";
-  };
-
-  $doc                           = Mojo::JSON::Pointer->new($doc);
-  $self->{url}                   = Mojo::URL->new($namespace);
-  $self->{tree}                  = $doc;
-  $self->{loaded}{$namespace}    = $doc;
-  $self->{namespace}{$namespace} = $namespace;
-
-  if (my $id = $doc->data->{id}) {
-    $self->{loaded}{$id} = $self->{loaded}{$namespace};
-    $self->{namespace}{id} = $namespace;
-  }
-  else {
-    $doc->data->{id} = "$namespace";
-  }
-
-  return $self;
+  $self->{url} = Mojo::URL->new($namespace);
+  $self->_parse($doc, $type, $namespace);
+  $self;
 }
 
 =head2 pod
@@ -254,8 +238,8 @@ Returns a L<Swagger2::POD> object.
 =cut
 
 sub pod {
-  my $self = shift;
-  my $resolved = $self->_resolve($self->tree, $self->url->clone->fragment(undef));
+  my $self     = shift;
+  my $resolved = $self->_expand($self->tree);
 
   require Swagger2::POD;
   Swagger2::POD->new(base_url => $self->base_url, tree => $resolved);
@@ -295,9 +279,60 @@ L<Swagger2::SchemaValidator/validate>.
 
 sub validate {
   my $self   = shift;
-  my $schema = $self->_resolve($self->specification);
+  my $schema = $self->_expand($self->specification);
 
-  return $self->_validator->validate($self->_resolve($self->tree)->data, $schema->data);
+  return $self->_validator->validate($self->_expand($self->tree)->data, $schema->data);
+}
+
+sub _clone {
+  my ($self, $obj, $namespace, $refs) = @_;
+  my $copy = ref $obj eq 'ARRAY' ? [] : {};
+  my $ref;
+
+  if (ref $obj eq 'HASH') {
+    $obj = $ref if $ref = $self->_find_ref($obj->{'$ref'}, $namespace, $refs);
+    $copy->{$_} = $self->_clone($obj->{$_}, $namespace, $refs) for keys %$obj;
+    delete $copy->{'$ref'};
+    return $copy;
+  }
+  elsif (ref $obj eq 'ARRAY') {
+    $copy->[$_] = $self->_clone($obj->[$_], $namespace, $refs) for 0 .. @$obj - 1;
+    return $copy;
+  }
+
+  return $obj;
+}
+
+sub _find_ref {
+  my ($self, $ref, $namespace, $refs) = @_;
+  my ($doc, $def);
+
+  if (!$ref or ref $ref) {
+    return;
+  }
+  if ($ref =~ /^\w+$/) {
+    $ref = "#/definitions/$ref";
+  }
+  if ($ref =~ s!^\#!!) {
+    $ref = Mojo::URL->new($namespace)->fragment($ref);
+  }
+  else {
+    $ref = Mojo::URL->new($ref);
+  }
+
+  return $refs->{$ref} if $refs->{$ref};
+  warn "[Swagger2] Resolve $ref\n" if DEBUG;
+  $refs->{$ref} = {};
+  $doc = $self->_load($ref);
+  $def = $self->_clone($doc->get($ref->fragment), $doc->data->{id}, $refs);
+  $refs->{$ref}{$_} = $def->{$_} for keys %$def;
+  $refs->{$ref};
+}
+
+sub _expand {
+  my ($self, $pointer) = @_;
+
+  Mojo::JSON::Pointer->new($self->_clone($pointer->data, $pointer->data->{id}, {}));
 }
 
 sub _load {
@@ -334,112 +369,27 @@ sub _load {
       Mojo::Util::spurt($doc, File::Spec->catfile(CACHE_DIR, md5_sum $namespace)) if CACHE_DIR;
     }
 
-    $type ||= $doc =~ /^---/ ? 'yaml' : 'json';
+    $type ||= $doc =~ /^\s*{/s ? 'json' : 'yaml';
   }
+
+  return $self->_parse($doc, $type, $namespace);
+}
+
+sub _parse {
+  my ($self, $doc, $type, $namespace) = @_;
+
+  warn "[Swagger2] Register $namespace ($type)\n" if DEBUG;
 
   # parse the document
   eval { $doc = $type eq 'yaml' ? LoadYAML($doc) : decode_json($doc); } or do {
-    die "Could not load document from $url: $@ ($doc)";
+    die "Could not load document from $namespace: $@ ($doc)";
   };
 
-  $doc                           = Mojo::JSON::Pointer->new($doc);
-  $self->{loaded}{$namespace}    = $doc;
-  $self->{namespace}{$namespace} = $namespace;
-
-  if (my $id = $doc->data->{id}) {
-    $self->{loaded}{$id} = $self->{loaded}{$namespace};
-    $self->{namespace}{id} = $namespace;
-  }
-  else {
-    $doc->data->{id} = "$namespace";
-  }
-
-  return $doc;
-}
-
-sub _resolve {
-  my ($self, $pointer, $namespace) = @_;
-  my $out = {};
-
-  local $self->{refs} = [];
-  local $self->{seen} = {};
-  $self->_resolve_deep($pointer, '', $out);
-  $self->_resolve_refs(Mojo::URL->new($namespace || $pointer->get('/id')));
-
-  return Mojo::JSON::Pointer->new($out);
-}
-
-sub _resolve_deep {
-  my ($self, $pointer, $path, $out) = @_;
-  my $in = $pointer->get($path);
-
-  if (ref $in ne 'HASH') {
-    return;
-  }
-  if (ref $in and $self->{seen}{$in}++) {
-    return;
-  }
-
-  for my $name (keys %$in) {
-    my $p = $name;
-    $p =~ s!/!~1!g;
-    if (ref $in->{$name} eq 'HASH') {
-      $out->{$name} = {%{$in->{$name}}};
-      $self->_track_ref($in->{$name}, $name, $out) and next;
-      $self->_resolve_deep($pointer, "$path/$p", $out->{$name});
-    }
-    elsif (ref $in->{$name} eq 'ARRAY') {
-      $out->{$name} = [];    # Fix "Not an ARRAY reference at lib/Swagger2.pm line 356."
-      for my $i (0 .. @{$in->{$name}} - 1) {
-        $out->{$name}[$i] = $in->{$name}[$i];
-        $self->_track_ref($in->{$name}[$i], $i, $out->{$name}) and next;
-        $self->_resolve_deep($pointer, "$path/$p/$i", $out->{$name}[$i]);
-      }
-    }
-    else {
-      $out->{$name} = $in->{$name};
-    }
-  }
-}
-
-sub _resolve_refs {
-  my ($self, $namespace) = @_;
-  my $refs = $self->{refs};
-
-  for (sort { length($b) <=> length($a) } @$refs) {
-    my ($node, $key, $url) = @$_;
-    my $doc = $self->_load(($url->host or $url->path->to_string) ? $url : $namespace);
-
-    $key =~ s!~1!/!g;
-    if (ref $node eq 'ARRAY') {
-      $node->[$key] = $doc->get($url->fragment);
-    }
-    else {
-      $node->{$key} = $doc->get($url->fragment);
-    }
-  }
-}
-
-sub _track_ref {
-  my ($self, $in, $key, $out) = @_;
-
-  return 0 if ref $in ne 'HASH';
-  return 0 if !$in->{'$ref'};
-  return 0 if ref $in->{'$ref'};
-
-  my $url = Mojo::URL->new($in->{'$ref'});
-  push @{$self->{refs}}, [$out, $key, $url];
-
-  if ($url->scheme or ($url->path->to_string and $url->fragment)) {
-    my $doc = $self->_load($url);
-    $self->_resolve_deep($doc, $url->fragment, $out);
-  }
-  elsif (!$url->fragment) {
-    $url->fragment(sprintf '/definitions/%s', $url->path);
-    $url->path('');
-  }
-
-  return 1;
+  $doc = Mojo::JSON::Pointer->new($doc);
+  $self->{loaded}{$namespace} = $doc;
+  $doc->data->{id} ||= "$namespace";
+  $self->{loaded}{$doc->data->{id}} = $doc;
+  $doc;
 }
 
 =head1 COPYRIGHT AND LICENSE

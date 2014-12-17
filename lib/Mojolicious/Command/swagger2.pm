@@ -11,6 +11,7 @@ L<Mojolicious::Command::swagger2> is a command for interfacing with L<Swagger2>.
 =head1 SYNOPSIS
 
   $ mojo swagger2 edit path/to/spec.json
+  $ mojo swagger2 edit path/to/spec.json --listen http://*:5000
   $ mojo swagger2 pod path/to/spec.json
   $ mojo swagger2 perldoc path/to/spec.json
   $ mojo swagger2 validate path/to/spec.json
@@ -39,6 +40,7 @@ has usage       => <<"HERE";
 Usage:
 
   # Edit an API file in your browser
+  # This command also takes whatever option "morbo" takes
   @{[__PACKAGE__->_usage('edit')]}
 
   # Write POD to STDOUT
@@ -51,8 +53,6 @@ Usage:
   @{[__PACKAGE__->_usage('validate')]}
 
 HERE
-
-has _swagger2 => sub { Swagger2->new };
 
 =head1 METHODS
 
@@ -86,7 +86,7 @@ sub _action_perldoc {
   die $self->_usage('perldoc'), "\n" unless $file;
   require Mojo::Asset::File;
   my $asset = Mojo::Asset::File->new;
-  $asset->add_chunk($self->_swagger2->load($file)->pod->to_string);
+  $asset->add_chunk(Swagger2->new($file)->pod->to_string);
   system perldoc => $asset->path;
 }
 
@@ -94,7 +94,7 @@ sub _action_pod {
   my ($self, $file) = @_;
 
   die $self->_usage('pod'), "\n" unless $file;
-  print $self->_swagger2->load($file)->pod->to_string;
+  print Swagger2->new($file)->pod->to_string;
 }
 
 sub _action_validate {
@@ -102,7 +102,7 @@ sub _action_validate {
   my @errors;
 
   die $self->_usage('validate'), "\n" unless $file;
-  @errors = $self->_swagger2->load($file)->validate;
+  @errors = Swagger2->new($file)->validate;
 
   unless (@errors) {
     print "$file is valid.\n";
@@ -165,13 +165,21 @@ if ($ENV{MOJO_APP_LOADER}) {
   );
   $app->routes->post(
     "/perldoc/$module" => sub {
-      my $c       = shift;
-      my $swagger = Swagger2->new->parse($c->req->body);
-      $c->render(text => $c->pod_to_html($swagger->pod->to_string));
+      my $c = shift;
+      eval {
+        my $swagger = Swagger2->new->parse($c->req->body || '{}');
+        $c->render(text => $c->pod_to_html($swagger->pod->to_string));
+      } or do {
+        my $e = $@;
+        $c->app->log->error($e);
+        $e =~ s!^(Could not.*?:)\s+!$1\n\n!s;
+        $e =~ s!\s+at \S+\.pm line \d\S+!!g;
+        $c->render(template => 'error', error => $e);
+      };
     }
   );
 
-  $app->defaults(module => $module, layout => 'default');
+  $app->defaults(module => $module, swagger => $swagger, layout => 'default');
   $app->plugin('PODRenderer');
   unshift @{$app->renderer->classes}, __PACKAGE__;
   unshift @{$app->static->paths}, File::Spec->catdir(File::Basename::dirname(__FILE__), 'swagger2-public');
@@ -180,8 +188,12 @@ if ($ENV{MOJO_APP_LOADER}) {
 $app;
 
 __DATA__
+@@ error.html.ep
+<h2>Error in specification</h2>
+<pre><%= $error %></pre>
+
 @@ editor.html.ep
-<div id="editor" class="editor"><%= Mojo::Util::slurp($ENV{SWAGGER_API_FILE}) %></div>
+<div id="editor"><%= Mojo::Util::slurp($swagger->url) %></div>
 <div id="preview"><div class="pod-container"><%= $pod %></div></div>
 %= javascript 'ace.js'
 %= javascript begin
@@ -210,17 +222,17 @@ __DATA__
     xhr = new XMLHttpRequest();
     xhr.open("POST", "<%= url_for("/perldoc/$module") %>", true);
     xhr.onload = function() { preview.firstChild.innerHTML = xhr.responseText; loaded(); };
-    localStorage["editor"] = editor.getValue();
-    xhr.send(localStorage["editor"]);
+    localStorage["swagger-spec"] = editor.getValue();
+    xhr.send(localStorage["swagger-spec"]);
   };
 
-  if (localStorage["editor"]) {
-    editor.setValue(localStorage["editor"]);
+  if (localStorage["swagger-spec"]) {
+    editor.setValue(localStorage["swagger-spec"]);
     render();
   }
 
   editor.setTheme("ace/theme/solarized_dark");
-  editor.getSession().setMode("ace/mode/json");
+  editor.getSession().setMode("ace/mode/<%= $swagger->url->path =~ /\.json$/ ? 'json' : 'yaml' %>");
   editor.getSession().on("change", function(e) {
     if (tid) clearTimeout(tid);
     tid = setTimeout(render, 400);
